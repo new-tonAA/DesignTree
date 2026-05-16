@@ -363,6 +363,26 @@ def get_current_platform():
     return agent.get_current_config()
 
 
+class SetApiKeysReq(BaseModel):
+    openai: Optional[str] = None
+    openrouter: Optional[str] = None
+    v3: Optional[str] = None
+    deepseek: Optional[str] = None
+
+@app.post("/api/set_api_keys")
+def set_api_keys(req: SetApiKeysReq):
+    """设置API Keys，覆盖默认值"""
+    if req.openai:
+        agent.PLATFORMS["openai"]["api_key"] = req.openai
+    if req.openrouter:
+        agent.PLATFORMS["openrouter"]["api_key"] = req.openrouter
+    if req.v3:
+        agent.PLATFORMS["v3"]["api_key"] = req.v3
+    if req.deepseek:
+        agent.PLATFORMS["deepseek"]["api_key"] = req.deepseek
+    return {"ok": True}
+
+
 # ── 辅助格式化 ───────────────────────────────
 
 def _history_for_ui(s: dict) -> list:

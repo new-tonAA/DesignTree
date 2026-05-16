@@ -13,6 +13,7 @@ import os
 import json
 import time
 import base64
+import re
 import httpx
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -191,6 +192,7 @@ _SYSTEM_PROMPT = """你是一名建筑效果图提示词助手。
 3. 如果用户描述模糊，帮他补充具体细节（如材质、视角）
 4. 保持简洁，不要写太长，50-100字足够
 5. 直接输出润色后的文字，不要解释
+6. 绝对不能改变用户核心意图；仅允许“清晰化表达”，不允许“改写需求方向”
 
 示例：
 用户输入："把屋顶改成红色"
@@ -219,7 +221,8 @@ def prompt_agent(context: dict) -> str:
         f"设计迭代路径（root → 当前）：\n{history_text}\n\n"
         f"路径上的已选图片记忆：\n{selected_text}\n\n"
         f"本次新需求：{context['new_user_input']}\n\n"
-        f"设计师风格偏好：{weights_text}{memory_text}"
+        f"设计师风格偏好：{weights_text}{memory_text}\n\n"
+        f"硬约束：不得改变“本次新需求”的语义方向，只能做清晰化与可视化细节补充。"
     )
 
     # OpenRouter需要特殊header
@@ -265,9 +268,21 @@ def compose_prompt_from_context(context: dict) -> str:
     new_user_input = (context.get("new_user_input") or "").strip()
     model_memory = (context.get("model_memory") or "").strip()
 
-    memory_inputs = [h.get("user_input", "").strip() for h in history if h.get("user_input")]
-    memory_prompts = [h.get("prompt_used", "").strip() for h in history if h.get("prompt_used")]
-    selected_revised = [x.get("revised_prompt", "").strip() for x in selected_images if x.get("revised_prompt")]
+    memory_inputs = _dedup_text_items(
+        [h.get("user_input", "").strip() for h in history if h.get("user_input")],
+        max_items=6,
+        similarity_threshold=0.82,
+    )
+    memory_prompts = _dedup_text_items(
+        [h.get("prompt_used", "").strip() for h in history if h.get("prompt_used")],
+        max_items=4,
+        similarity_threshold=0.78,
+    )
+    selected_revised = _dedup_text_items(
+        [x.get("revised_prompt", "").strip() for x in selected_images if x.get("revised_prompt")],
+        max_items=4,
+        similarity_threshold=0.78,
+    )
 
     preferred_styles = [
         k for k, v in sorted(style_weights.items(), key=lambda x: x[1], reverse=True)
@@ -283,20 +298,20 @@ def compose_prompt_from_context(context: dict) -> str:
     if model_memory:
         parts.append("Model memory (always applied): " + model_memory + ".")
     if memory_inputs:
-        parts.append("Design evolution memory from previous nodes: " + " | ".join(memory_inputs[-6:]) + ".")
+        parts.append("Design evolution memory from previous nodes: " + " | ".join(memory_inputs) + ".")
     if memory_prompts:
-        parts.append("Established visual decisions: " + " | ".join(memory_prompts[-3:]) + ".")
+        parts.append("Established visual decisions: " + " | ".join(memory_prompts) + ".")
     if selected_revised:
-        parts.append("Selected image references to preserve: " + " | ".join(selected_revised[-4:]) + ".")
+        parts.append("Selected image references to preserve: " + " | ".join(selected_revised) + ".")
     if preferred_styles:
         parts.append("Preferred style cues: " + ", ".join(preferred_styles) + ".")
     if avoided_styles:
         parts.append("Avoid these style cues: " + ", ".join(avoided_styles) + ".")
     if new_user_input:
-        parts.append("New refinement request: " + new_user_input + ".")
+        parts.append("Primary user request (must remain unchanged): " + new_user_input + ".")
 
     parts.append(
-        "Keep architectural consistency while refining details. "
+        "Keep architectural consistency while refining details, and never contradict the primary user request. "
         "Include clear viewpoint, lighting, materials, surroundings, "
         "photorealistic architectural visualization, 8k, professional rendering."
     )
@@ -342,6 +357,96 @@ def _format_weights(weights: dict) -> str:
         return "暂无"
     top = sorted(weights.items(), key=lambda x: abs(x[1]), reverse=True)[:8]
     return "、".join(f"{k}({v:+.1f})" for k, v in top)
+
+
+def _dedup_text_items(items: list[str], max_items: Optional[int] = None, similarity_threshold: float = 0.86) -> list[str]:
+    """
+    文本去重（保守策略）：
+    - 完全相同去重
+    - 子串高重合去重
+    - Jaccard 词集相似度去重
+    只去重“补充记忆片段”，不改写文本内容本身。
+    """
+    kept: list[str] = []
+    kept_norm: list[str] = []
+    kept_tokens: list[set[str]] = []
+
+    for raw in items:
+        text = _clean_text_piece(raw)
+        if not text:
+            continue
+        norm = _normalize_for_similarity(text)
+        if not norm:
+            continue
+        tokens = _tokenize_for_similarity(norm)
+        if not tokens:
+            continue
+
+        duplicated = False
+        for i, prev_norm in enumerate(kept_norm):
+            prev_tokens = kept_tokens[i]
+            if norm == prev_norm:
+                duplicated = True
+                break
+
+            shorter = min(len(norm), len(prev_norm))
+            longer = max(len(norm), len(prev_norm))
+            if shorter > 0 and (norm in prev_norm or prev_norm in norm) and (shorter / longer >= 0.66):
+                duplicated = True
+                break
+
+            if _jaccard_similarity(tokens, prev_tokens) >= similarity_threshold:
+                duplicated = True
+                break
+            if _overlap_similarity(tokens, prev_tokens) >= 0.9:
+                duplicated = True
+                break
+
+        if duplicated:
+            continue
+
+        kept.append(text)
+        kept_norm.append(norm)
+        kept_tokens.append(tokens)
+
+    if max_items is not None and max_items > 0:
+        return kept[-max_items:]
+    return kept
+
+
+def _clean_text_piece(text: str) -> str:
+    return re.sub(r"\s+", " ", str(text or "")).strip().strip("|,.;")
+
+
+def _normalize_for_similarity(text: str) -> str:
+    s = str(text or "").lower().strip()
+    s = re.sub(r"[，。！？!?,;:：/\\|()\[\]{}\"'`~]+", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def _tokenize_for_similarity(norm_text: str) -> set[str]:
+    return {tok for tok in norm_text.split(" ") if tok}
+
+
+def _jaccard_similarity(a: set[str], b: set[str]) -> float:
+    if not a or not b:
+        return 0.0
+    inter = len(a & b)
+    union = len(a | b)
+    if union == 0:
+        return 0.0
+    return inter / union
+
+
+def _overlap_similarity(a: set[str], b: set[str]) -> float:
+    if not a or not b:
+        return 0.0
+    inter = len(a & b)
+    min_size = min(len(a), len(b))
+    if min_size == 0:
+        return 0.0
+    return inter / min_size
 
 
 # ─────────────────────────────────────────────

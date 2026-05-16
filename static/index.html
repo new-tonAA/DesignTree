@@ -33,6 +33,28 @@
   --serif:  'DM Serif Display', serif;
   --mono:   'JetBrains Mono', monospace;
 }
+
+/* 主题预设 */
+.theme-ocean {
+  --accent: #5b8fbf;
+  --acl:    rgba(91,143,191,0.15);
+}
+.theme-forest {
+  --accent: #5a9e7a;
+  --acl:    rgba(90,158,122,0.15);
+}
+.theme-rose {
+  --accent: #c06080;
+  --acl:    rgba(192,96,128,0.15);
+}
+.theme-sunset {
+  --accent: #d4956a;
+  --acl:    rgba(212,149,106,0.15);
+}
+.theme-purple {
+  --accent: #9b7abf;
+  --acl:    rgba(155,122,191,0.15);
+}
 html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; }
 
 /* ── Layout ─────────────────────────────────── */
@@ -208,6 +230,67 @@ textarea#userInput::placeholder { color: var(--dim); }
 .model-memory-area:focus { border-color: var(--accent); }
 .model-memory-area::placeholder { color: var(--dim); }
 
+/* ── Footer toolbar ─────────────────────────── */
+.footer-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  margin-top: 8px;
+}
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.toolbar-btn {
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  background: var(--bg3);
+  color: var(--text);
+  border: 1px solid var(--line2);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all .15s;
+  font-family: var(--sans);
+}
+.toolbar-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.toolbar-btn.send-btn {
+  background: var(--accent);
+  color: var(--bg);
+  border: none;
+  font-weight: 500;
+}
+.toolbar-btn.send-btn:hover {
+  opacity: .88;
+}
+.polish-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--accent);
+  padding: 4px 10px;
+  background: var(--acl);
+  border-radius: 4px;
+}
+.status-btn {
+  padding: 2px 8px;
+  background: var(--bg4);
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  cursor: pointer;
+}
+.status-btn:hover {
+  color: var(--text);
+}
+
 .send-btn {
   display: flex; align-items: center; justify-content: center; gap: 6px;
   padding: 10px 18px; border-radius: var(--radius);
@@ -221,7 +304,7 @@ textarea#userInput::placeholder { color: var(--dim); }
 .composer-meta {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 8px;
   min-height: 24px;
 }
@@ -293,24 +376,6 @@ textarea#userInput::placeholder { color: var(--dim); }
   box-shadow: 0 6px 14px rgba(0,0,0,0.24);
 }
 #sendBtn i { font-size: 14px; }
-#showPromptBtn[disabled] {
-  opacity: .45;
-  cursor: not-allowed;
-  border-color: var(--line);
-  color: var(--dim);
-}
-
-/* ── Prompt preview bar ─────────────────────── */
-.prompt-bar {
-  font-size: 11px; color: var(--muted); font-family: var(--mono);
-  background: var(--bg3); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: 6px 10px;
-  margin-bottom: 0; line-height: 1.6;
-  display: none; align-items: flex-start; gap: 6px;
-}
-.prompt-bar .plabel { color: var(--accent); white-space: nowrap; }
-.prompt-bar #promptText { flex: 1; word-break: break-word; }
-
 /* Prompt modal */
 .prompt-modal {
   display: none;
@@ -376,7 +441,7 @@ textarea#userInput::placeholder { color: var(--dim); }
 .tree-node { display: flex; align-items: flex-start; gap: 7px; padding: 5px 6px; border-radius: var(--radius); cursor: pointer; transition: background .12s; }
 .tree-node:hover { background: var(--bg3); }
 .tree-node.current { background: var(--bluel); }
-.tree-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; border: 1.5px solid var(--dim); background: transparent; transition: all .15s; }
+.tree-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; border: 1.5px solid var(--dim); background: transparent; transition: all .15s; cursor: pointer; }
 .tree-dot.done { background: var(--green); border-color: var(--green); }
 .tree-dot.current { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 3px var(--acl); }
 .tree-dot.branch { border-color: var(--blue); }
@@ -497,7 +562,7 @@ textarea#userInput::placeholder { color: var(--dim); }
 
 <div class="app">
   <div class="titlebar">
-    <span class="logo">ArchAI</span>
+    <span class="logo" style="cursor:pointer" onclick="showSettingsModal()">DesignTree</span>
     <button class="cfg-sel" style="width:auto;padding:5px 10px;font-size:11px;margin-left:8px" id="projBtn" onclick="handleProjBtn()">
       新建项目
     </button>
@@ -536,33 +601,28 @@ textarea#userInput::placeholder { color: var(--dim); }
       <div class="footer">
         <div class="footer-resizer" id="footerResizeHandle"></div>
         <div class="footer-content">
-          <div class="prompt-bar" id="promptBar" style="display:none">
-            <span class="plabel">Prompt →</span><span id="promptText"></span>
-            <button class="mini-btn ghost" onclick="hidePromptBar()">收起</button>
-          </div>
-          <div class="composer-meta">
-            <button id="showPromptBtn" class="mini-btn ghost" onclick="showPromptBar()" disabled>暂无 Prompt</button>
-            <div id="polishStatus" class="polish-status" style="display:none">
-              <span id="polishStatusText"></span>
-              <button class="mini-btn" onclick="cancelPolish()">取消润色</button>
-              <button class="mini-btn" onclick="rePolish()">重新润色</button>
-            </div>
-          </div>
-          <div class="input-row composer-main">
-            <div class="input-wrap composer-input">
+          <div class="input-row composer-main" style="flex-direction:column">
+            <div class="input-wrap composer-input" style="width:100%">
               <textarea id="userInput" placeholder="描述你的设计需求或改进方向…" rows="2"
                 onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();generate()}"></textarea>
-              <div class="composer-actions">
-                <button id="voiceBtn" onclick="startVoiceInput()">
+            </div>
+            <div class="footer-toolbar">
+              <div class="toolbar-left">
+                <button id="voiceBtn" class="toolbar-btn" onclick="startVoiceInput()">
                   🎤 语音
                 </button>
-                <button id="polishBtn" onclick="polishPrompt()">
+                <button id="polishBtn" class="toolbar-btn" onclick="polishPrompt()">
                   润色
                 </button>
-                <button class="send-btn" id="sendBtn" onclick="generate()">
-                  生成
-                </button>
+                <div id="polishStatus" class="polish-status" style="display:none">
+                  <span id="polishStatusText"></span>
+                  <button class="status-btn" onclick="cancelPolish()">取消</button>
+                  <button class="status-btn" onclick="rePolish()">重试</button>
+                </div>
               </div>
+              <button class="send-btn toolbar-btn" id="sendBtn" onclick="generate()">
+                生成
+              </button>
             </div>
           </div>
         </div>
@@ -600,7 +660,7 @@ textarea#userInput::placeholder { color: var(--dim); }
           <div class="sec">风格偏好（自动学习）</div>
           <div id="styleContainer"></div>
           <div class="sec" style="margin-top:14px">风格选择（勾选=要，未勾选=不要）</div>
-          <div class="style-pick-tip">点击后再点“应用选择”。未勾选标签会被视为“不要”。</div>
+          <div class="style-pick-tip">点击后再点"应用选择"。未勾选标签会被视为"不要"。</div>
           <div id="stylePicker" class="style-pick-grid"></div>
           <div class="style-pick-actions">
             <button class="mini-btn ghost" onclick="resetStyleSelection()">清空勾选</button>
@@ -710,10 +770,80 @@ textarea#userInput::placeholder { color: var(--dim); }
 <div id="promptModal" class="prompt-modal" onclick="if(event.target===this)hidePromptBar()">
   <div class="prompt-modal-card">
     <div class="prompt-modal-head">
-      <div class="prompt-modal-title">完整 Prompt</div>
+      <div class="prompt-modal-title" id="promptModalTitle">完整 Prompt</div>
       <button class="mini-btn" onclick="hidePromptBar()">关闭</button>
     </div>
     <div class="prompt-modal-body" id="promptModalText">暂无 Prompt</div>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div id="settingsModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:1003;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;padding:20px;width:400px;max-height:80vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-size:16px;font-weight:600;color:var(--text)">设置</div>
+      <button style="width:28px;height:28px;background:var(--bg4);border:1px solid var(--line2);border-radius:50%;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center" onclick="hideSettingsModal()">✕</button>
+    </div>
+
+    <!-- 主题色 -->
+    <div style="margin-bottom:20px">
+      <div style="font-size:12px;font-weight:500;color:var(--muted);margin-bottom:10px">主题色</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="theme-btn" data-theme="" onclick="setTheme('')" style="width:32px;height:32px;border-radius:50%;background:#c8a96e;border:2px solid var(--line2);cursor:pointer"></button>
+        <button class="theme-btn" data-theme="ocean" onclick="setTheme('ocean')" style="width:32px;height:32px;border-radius:50%;background:#5b8fbf;border:2px solid var(--line2);cursor:pointer"></button>
+        <button class="theme-btn" data-theme="forest" onclick="setTheme('forest')" style="width:32px;height:32px;border-radius:50%;background:#5a9e7a;border:2px solid var(--line2);cursor:pointer"></button>
+        <button class="theme-btn" data-theme="rose" onclick="setTheme('rose')" style="width:32px;height:32px;border-radius:50%;background:#c06080;border:2px solid var(--line2);cursor:pointer"></button>
+        <button class="theme-btn" data-theme="sunset" onclick="setTheme('sunset')" style="width:32px;height:32px;border-radius:50%;background:#d4956a;border:2px solid var(--line2);cursor:pointer"></button>
+        <button class="theme-btn" data-theme="purple" onclick="setTheme('purple')" style="width:32px;height:32px;border-radius:50%;background:#9b7abf;border:2px solid var(--line2);cursor:pointer"></button>
+      </div>
+    </div>
+
+    <!-- API Key -->
+    <div style="margin-bottom:20px">
+      <div style="font-size:12px;font-weight:500;color:var(--muted);margin-bottom:10px">API Key（留空使用默认）</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div>
+          <div style="font-size:11px;color:var(--dim);margin-bottom:4px">OpenAI</div>
+          <input type="text" id="keyOpenAI" placeholder="sk-..." style="width:100%;padding:8px 10px;background:var(--bg3);border:1px solid var(--line2);border-radius:6px;color:var(--text);font-size:12px;outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--line2)'">
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--dim);margin-bottom:4px">OpenRouter</div>
+          <input type="text" id="keyOpenRouter" placeholder="sk-or-..." style="width:100%;padding:8px 10px;background:var(--bg3);border:1px solid var(--line2);border-radius:6px;color:var(--text);font-size:12px;outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--line2)'">
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--dim);margin-bottom:4px">V3.CM</div>
+          <input type="text" id="keyV3" placeholder="sk-..." style="width:100%;padding:8px 10px;background:var(--bg3);border:1px solid var(--line2);border-radius:6px;color:var(--text);font-size:12px;outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--line2)'">
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--dim);margin-bottom:4px">DeepSeek</div>
+          <input type="text" id="keyDeepSeek" placeholder="sk-..." style="width:100%;padding:8px 10px;background:var(--bg3);border:1px solid var(--line2);border-radius:6px;color:var(--text);font-size:12px;outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--line2)'">
+        </div>
+      </div>
+    </div>
+
+    <!-- 作者信息 -->
+    <div style="padding-top:16px;border-top:1px solid var(--line)">
+      <div style="font-size:12px;font-weight:500;color:var(--muted);margin-bottom:10px">关于作者</div>
+      <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--text)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="color:var(--muted);width:60px">GitHub</span>
+          <a href="https://github.com/new-tonAA" target="_blank" style="color:var(--accent);text-decoration:none">github.com/new-tonAA</a>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="color:var(--muted);width:60px">邮箱</span>
+          <a href="mailto:new-tonaa@outlook.com" style="color:var(--accent);text-decoration:none">new-tonaa@outlook.com</a>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="color:var(--muted);width:60px">主页</span>
+          <a href="https://new-tonaa.github.io/" target="_blank" style="color:var(--accent);text-decoration:none">new-tonaa.github.io</a>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button style="flex:1;padding:10px 0;background:var(--bg4);border:1px solid var(--line2);border-radius:6px;color:var(--muted);font-size:12px;cursor:pointer" onclick="hideSettingsModal()">取消</button>
+      <button style="flex:1;padding:10px 0;background:var(--accent);border:none;border-radius:6px;color:var(--bg);font-size:12px;font-weight:500;cursor:pointer" onclick="saveSettings()">保存</button>
+    </div>
   </div>
 </div>
 
@@ -742,7 +872,7 @@ let currentImageModel = 'gpt-image-1';
 let currentTextPlatform = 'deepseek';
 let currentTextModel = 'deepseek-chat';
 let sideWidth = parseInt(localStorage.getItem('archai_side_width') || '288', 10);
-let currentPromptText = '';
+let nodePromptMap = {};
 let styleCandidatePool = [];
 let styleSelectedSet = new Set();
 
@@ -1472,21 +1602,16 @@ async function refreshState() {
   renderStylePicker(s.style_candidates || []);
   renderImages(s.current_images || [], s.current_selected || null);
 
-  const showPromptBtn = document.getElementById('showPromptBtn');
-  if (s.current_prompt) {
-    currentPromptText = s.current_prompt;
-    document.getElementById('promptText').textContent = s.current_prompt;
-    document.getElementById('promptModalText').textContent = s.current_prompt;
-    showPromptBtn.disabled = false;
-    showPromptBtn.textContent = '查看完整 Prompt';
-  } else {
-    currentPromptText = '';
-    document.getElementById('promptText').textContent = '';
-    document.getElementById('promptModalText').textContent = '暂无 Prompt';
-    document.getElementById('promptBar').style.display = 'none';
-    showPromptBtn.disabled = true;
-    showPromptBtn.textContent = '暂无 Prompt';
-    hidePromptBar();
+  nodePromptMap = {};
+  (s.history || []).forEach((h) => {
+    if (h && h.id) nodePromptMap[h.id] = h.prompt || '';
+  });
+
+  // 如果当前在看弹窗且切换后该节点无prompt，则自动关闭
+  const modalEl = document.getElementById('promptModal');
+  if (modalEl && modalEl.style.display === 'flex') {
+    const curPrompt = (nodePromptMap[s.current_node] || '').trim();
+    if (!curPrompt) hidePromptBar();
   }
   syncComposerTextareaHeight();
   
@@ -1505,14 +1630,25 @@ function handleProjBtn() {
   }
 }
 
-// ── Prompt bar ────────────────────────────────
-function showPromptBar() {
-  if (!currentPromptText) {
-    toast('当前节点暂无 Prompt');
+// ── Prompt modal ──────────────────────────────
+function showPromptBar(promptText = '', title = '完整 Prompt') {
+  const text = (promptText || '').trim();
+  if (!text) {
+    toast('该节点暂无 Prompt');
     return;
   }
-  document.getElementById('promptModalText').textContent = currentPromptText;
+  document.getElementById('promptModalTitle').textContent = title;
+  document.getElementById('promptModalText').textContent = text;
   document.getElementById('promptModal').style.display = 'flex';
+}
+
+function showPromptForNode(nodeId) {
+  const prompt = (nodePromptMap[nodeId] || '').trim();
+  if (!prompt) {
+    toast(`节点 ${nodeId} 暂无 Prompt`);
+    return;
+  }
+  showPromptBar(prompt, `节点 ${nodeId} · 完整 Prompt`);
 }
 
 function hidePromptBar() {
@@ -1533,12 +1669,7 @@ async function generate() {
 
   // Show loading placeholders
   showLoadingCards(currentN);
-  document.getElementById('promptBar').style.display = 'none';
   hidePromptBar();
-  currentPromptText = '';
-  const showPromptBtn = document.getElementById('showPromptBtn');
-  showPromptBtn.disabled = true;
-  showPromptBtn.textContent = '暂无 Prompt';
 
   try {
     // 直接使用输入框内容，不再后端润色（用户已在前端润色）
@@ -1560,7 +1691,6 @@ async function generate() {
     await res.json();
     document.getElementById('userInput').value = '';
     document.getElementById('polishStatus').style.display = 'none';
-    currentPromptText = '';
     syncComposerTextareaHeight();
     selectedImageUrl = null;
     originalInput = '';
@@ -1759,6 +1889,14 @@ function renderTree(node, container, depth=0) {
       <div class="tree-label">${node.label}</div>
       <div class="tree-meta">${node.id} · ${node.images}张图${node.selected ? ' · 已选' : ''}</div>
     </div>`;
+  const dotEl = tn.querySelector('.tree-dot');
+  if (dotEl) {
+    dotEl.title = '点击查看该节点完整 Prompt';
+    dotEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showPromptForNode(node.id);
+    });
+  }
   wrap.appendChild(tn);
 
   if (node.children && node.children.length) {
@@ -1942,6 +2080,75 @@ function toast(msg) {
 
 // ── Init ──────────────────────────────────────
 init();
+
+// ── Settings ──────────────────────────────────
+function showSettingsModal() {
+  // 加载当前主题
+  const currentTheme = localStorage.getItem('archai_theme') || '';
+  document.querySelectorAll('.theme-btn').forEach(btn => {
+    btn.style.borderColor = btn.dataset.theme === currentTheme ? 'var(--text)' : 'var(--line2)';
+    btn.style.boxShadow = btn.dataset.theme === currentTheme ? '0 0 0 2px var(--accent)' : 'none';
+  });
+  
+  // 加载API keys
+  const keys = JSON.parse(localStorage.getItem('archai_api_keys') || '{}');
+  document.getElementById('keyOpenAI').value = keys.openai || '';
+  document.getElementById('keyOpenRouter').value = keys.openrouter || '';
+  document.getElementById('keyV3').value = keys.v3 || '';
+  document.getElementById('keyDeepSeek').value = keys.deepseek || '';
+  
+  document.getElementById('settingsModal').style.display = 'flex';
+}
+
+function hideSettingsModal() {
+  document.getElementById('settingsModal').style.display = 'none';
+}
+
+function setTheme(theme) {
+  // 移除所有主题类
+  document.documentElement.className = '';
+  if (theme) {
+    document.documentElement.classList.add('theme-' + theme);
+  }
+  localStorage.setItem('archai_theme', theme);
+  
+  // 更新按钮状态
+  document.querySelectorAll('.theme-btn').forEach(btn => {
+    btn.style.borderColor = btn.dataset.theme === theme ? 'var(--text)' : 'var(--line2)';
+    btn.style.boxShadow = btn.dataset.theme === theme ? '0 0 0 2px var(--accent)' : 'none';
+  });
+}
+
+async function saveSettings() {
+  // 保存API keys到localStorage
+  const keys = {
+    openai: document.getElementById('keyOpenAI').value.trim(),
+    openrouter: document.getElementById('keyOpenRouter').value.trim(),
+    v3: document.getElementById('keyV3').value.trim(),
+    deepseek: document.getElementById('keyDeepSeek').value.trim(),
+  };
+  localStorage.setItem('archai_api_keys', JSON.stringify(keys));
+  
+  // 发送到后端覆盖
+  try {
+    await fetch('/api/set_api_keys', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(keys)
+    });
+  } catch (e) {}
+  
+  hideSettingsModal();
+  toast('设置已保存');
+}
+
+// 加载主题
+(function() {
+  const theme = localStorage.getItem('archai_theme') || '';
+  if (theme) {
+    document.documentElement.classList.add('theme-' + theme);
+  }
+})();
 </script>
 </body>
 </html>
