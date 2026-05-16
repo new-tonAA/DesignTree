@@ -111,7 +111,7 @@ PLATFORMS: Dict[str, Dict[str, Any]] = {
 
 # 当前选择的平台和模型（可通过API修改）
 _current_platform = "v3"
-_current_image_model = "gptimage2"
+_current_image_model = "gpt-image-1"
 _current_text_platform = "v3"  # 文本模型独立平台（V3.CM 有文本模型）
 _current_text_model = "gpt-4o-mini"
 
@@ -127,6 +127,43 @@ def get_platforms() -> Dict[str, Dict[str, Any]]:
     }
 
 
+def _model_key(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", (name or "").strip().lower())
+
+
+def _normalize_image_model(platform: str, image_model: Optional[str]) -> Optional[str]:
+    if image_model is None:
+        return None
+    model = str(image_model).strip()
+    if not model:
+        return model
+
+    supported = PLATFORMS.get(platform, {}).get("models", {}).get("image", [])
+    by_key = {_model_key(m): m for m in supported}
+    key = _model_key(model)
+
+    # 旧名称兼容（如 gptimage2 / dalle3）
+    alias = {
+        "gptimage1": "gpt-image-1",
+        "gptimage15": "gpt-image-1.5",
+        "gptimage2": "gpt-image-2",
+        "gptimage1mini": "gpt-image-1-mini",
+        "dalle2": "dall-e-2",
+        "dalle3": "dall-e-3",
+    }
+    mapped = alias.get(key, model)
+    mapped_key = _model_key(mapped)
+
+    if mapped_key in by_key:
+        return by_key[mapped_key]
+
+    # OpenAI 不再支持 DALL-E 系列时，自动映射到 gpt-image-1
+    if platform == "openai" and mapped_key in {"dalle2", "dalle3"}:
+        return "gpt-image-1"
+
+    return mapped
+
+
 def set_platform(platform: str, image_model: Optional[str] = None, text_model: Optional[str] = None, text_platform: Optional[str] = None):
     """设置当前使用的平台和模型"""
     global _current_platform, _current_image_model, _current_text_platform, _current_text_model
@@ -137,11 +174,10 @@ def set_platform(platform: str, image_model: Optional[str] = None, text_model: O
     config = PLATFORMS[platform]
     
     if image_model:
-        if platform == "openai" and image_model in {"dall-e-3", "dall-e-2"}:
-            image_model = "gpt-image-1"
-        if image_model not in config["models"].get("image", []):
+        normalized_model = _normalize_image_model(platform, image_model)
+        if normalized_model not in config["models"].get("image", []):
             raise ValueError(f"平台 {platform} 不支持图像模型: {image_model}")
-        _current_image_model = image_model
+        _current_image_model = normalized_model
     elif config["models"].get("image"):
         _current_image_model = config["models"]["image"][0]
     
@@ -480,13 +516,16 @@ def generate_images(
         headers["HTTP-Referer"] = "https://localhost:8000"
         headers["X-Title"] = "ArchAI"
 
-    # 优先当前模型，OpenAI失败时可回退到 gpt-image-1
+    # 优先当前模型，失败时按平台模型列表逐个回退
+    normalized_current = _normalize_image_model(platform, _current_image_model)
+    if normalized_current:
+        _current_image_model = normalized_current
+
     model_candidates = [_current_image_model]
     platform_image_models = PLATFORMS[platform].get("models", {}).get("image", [])
-    if platform_image_models:
-        default_model = platform_image_models[0]
-        if default_model not in model_candidates:
-            model_candidates.append(default_model)
+    for model in platform_image_models:
+        if model not in model_candidates:
+            model_candidates.append(model)
     if platform == "openai" and "gpt-image-1" not in model_candidates:
         model_candidates.append("gpt-image-1")
     model_candidates = list(dict.fromkeys(model_candidates))
@@ -586,7 +625,10 @@ def _generate_single_image(
                     if mi < len(model_candidates) - 1:
                         break
 
-                if _is_model_not_found_error(err_text) and mi < len(model_candidates) - 1:
+                if (
+                    _is_model_not_found_error(err_text)
+                    or _is_model_unavailable_error(err_text, model_name)
+                ) and mi < len(model_candidates) - 1:
                     break
 
                 raise
@@ -766,6 +808,41 @@ def _is_model_not_found_error(error_text: str) -> bool:
         or "invalidendpointormodel.notfound" in text
         or ("invalid_value" in text and "\"param\": \"model\"" in normalized)
     )
+
+
+def _is_model_unavailable_error(error_text: str, model_name: Optional[str] = None) -> bool:
+    text = (error_text or "").lower()
+    explicit_hit = (
+        "暂无可用渠道" in error_text
+        or "无可用渠道" in error_text
+        or "no available channel" in text
+        or "no channel available" in text
+        or "channel unavailable" in text
+        or "model unavailable" in text
+        or "temporarily unavailable" in text
+    )
+    if explicit_hit:
+        return True
+
+    # 某些网关会返回 "v3 400: ...模型 gptimage2 ..."，不带统一英文错误码
+    # 当报错中明确提到当前模型，且是 4xx 请求错误（非余额/鉴权）时，尝试回退到下一个模型。
+    model_key = _model_key(model_name or "")
+    normalized = _model_key(text)
+    model_mentioned = bool(model_key and model_key in normalized)
+    if not model_mentioned:
+        return False
+
+    hard_fail = (
+        "insufficient balance" in text
+        or "invalid api key" in text
+        or "unauthorized" in text
+        or "forbidden" in text
+        or "quota" in text
+    )
+    if hard_fail:
+        return False
+
+    return (" 400:" in text or "invalid_request" in text or "bad request" in text)
 
 
 def _is_size_unsupported_error(error_text: str) -> bool:

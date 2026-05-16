@@ -520,6 +520,15 @@ textarea#userInput::placeholder { color: var(--dim); }
 .tree-dot.done { background: var(--green); border-color: var(--green); }
 .tree-dot.current { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 3px var(--acl); }
 .tree-dot.branch { border-color: var(--blue); }
+.tree-dot.generating {
+  background: transparent;
+  border-color: var(--accent);
+  animation: pulse-dot 1s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.3); opacity: 0.6; }
+}
 .tree-label { font-size: 12px; color: var(--text); line-height: 1.4; flex: 1; }
 .tree-meta { font-size: 10px; color: var(--muted); margin-top: 1px; font-family: var(--mono); }
 .tree-children { margin-left: 15px; padding-left: 8px; border-left: 1px solid var(--line); margin-top: 1px; }
@@ -1051,7 +1060,7 @@ let selectedImageUrls = new Set();
 let currentNodeImageUrlSet = new Set();
 let platformsData = {};
 let currentPlatform = 'v3';
-let currentImageModel = 'gptimage2';
+let currentImageModel = 'gpt-image-1';
 let currentTextPlatform = 'deepseek';
 let currentTextModel = 'deepseek-chat';
 let sideWidth = parseInt(localStorage.getItem('archai_side_width') || '288', 10);
@@ -1065,6 +1074,21 @@ const CONFIG_KEY = 'archai_config';
 const INPUT_KEY = 'archai_input';
 const MEMORY_KEY = 'archai_model_memory';
 const STYLE_KEY = 'archai_style_selection';
+
+function normalizeImageModelAlias(model) {
+  const m = String(model || '').trim();
+  if (!m) return '';
+  const key = m.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const alias = {
+    gptimage1: 'gpt-image-1',
+    gptimage15: 'gpt-image-1.5',
+    gptimage2: 'gpt-image-2',
+    gptimage1mini: 'gpt-image-1-mini',
+    dalle2: 'dall-e-2',
+    dalle3: 'dall-e-3',
+  };
+  return alias[key] || m;
+}
 
 // Save config to localStorage
 function saveConfig() {
@@ -1083,7 +1107,7 @@ function loadConfig() {
     try {
       const config = JSON.parse(saved);
       currentPlatform = config.platform || 'v3';
-      currentImageModel = config.imageModel || 'gptimage2';
+      currentImageModel = normalizeImageModelAlias(config.imageModel || 'gpt-image-1');
       currentTextPlatform = config.textPlatform || 'v3';
       currentTextModel = config.textModel || 'gpt-4o-mini';
     } catch (e) {}
@@ -1146,7 +1170,7 @@ async function init() {
     // Prefer localStorage config if available
     if (!localStorage.getItem(CONFIG_KEY)) {
       currentPlatform = current.platform;
-      currentImageModel = current.image_model;
+      currentImageModel = normalizeImageModelAlias(current.image_model);
       currentTextPlatform = current.text_platform || 'v3';
       currentTextModel = current.text_model || 'gpt-4o-mini';
     }
@@ -1291,6 +1315,14 @@ function onPlatformChange() {
   const imageEl = document.getElementById('imageModelSelect');
   const imageModels = models.image || [];
   imageEl.innerHTML = imageModels.map(m => `<option value="${m}">${getModelIcon(m)} ${m}</option>`).join('');
+  if (!imageModels.length) {
+    currentImageModel = '';
+    return;
+  }
+  const wanted = normalizeImageModelAlias(currentImageModel || imageEl.value);
+  const next = imageModels.includes(wanted) ? wanted : imageModels[0];
+  imageEl.value = next;
+  currentImageModel = next;
 }
 
 function onTextPlatformChange() {
@@ -1300,13 +1332,21 @@ function onTextPlatformChange() {
   const textEl = document.getElementById('textModelSelect');
   const textModels = models.text || [];
   textEl.innerHTML = textModels.map(m => `<option value="${m}">${getModelIcon(m)} ${m}</option>`).join('');
+  if (!textModels.length) {
+    currentTextModel = '';
+    return;
+  }
+  const next = textModels.includes(currentTextModel) ? currentTextModel : textModels[0];
+  textEl.value = next;
+  currentTextModel = next;
 }
 
 async function applyImgPlatform() {
   const platform = document.getElementById('platformSelect').value;
-  const imageModel = document.getElementById('imageModelSelect').value;
+  const imageSelect = document.getElementById('imageModelSelect');
+  const imageModel = normalizeImageModelAlias(imageSelect.value || imageSelect.options?.[0]?.value || '');
 
-  await fetch('/api/set_platform', {
+  const res = await fetch('/api/set_platform', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({
@@ -1314,6 +1354,11 @@ async function applyImgPlatform() {
       image_model: imageModel
     })
   });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    toast('图像平台切换失败: ' + (err.detail || res.status));
+    return;
+  }
 
   currentPlatform = platform;
   currentImageModel = imageModel;
@@ -1325,9 +1370,10 @@ async function applyImgPlatform() {
 
 async function applyTxtPlatform() {
   const textPlatform = document.getElementById('textPlatformSelect').value;
-  const textModel = document.getElementById('textModelSelect').value;
+  const textSelect = document.getElementById('textModelSelect');
+  const textModel = textSelect.value || textSelect.options?.[0]?.value || '';
 
-  await fetch('/api/set_platform', {
+  const res = await fetch('/api/set_platform', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({
@@ -1335,6 +1381,11 @@ async function applyTxtPlatform() {
       text_model: textModel
     })
   });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    toast('文本平台切换失败: ' + (err.detail || res.status));
+    return;
+  }
 
   currentTextPlatform = textPlatform;
   currentTextModel = textModel;
@@ -2036,8 +2087,12 @@ function hidePromptBar() {
 // ── Generate ──────────────────────────────────
 let generatingNode = null;
 let pollingInterval = null;
+let isGenerating = false;
 
 async function generate() {
+  // 防止重复点击
+  if (isGenerating) return;
+
   const input = document.getElementById('userInput').value.trim();
   if (!input && !promptImages.length) { toast('请输入设计需求或上传图片'); return; }
 
@@ -2045,6 +2100,7 @@ async function generate() {
   const modelMemory = document.getElementById('modelMemory')?.value.trim() || '';
 
   const btn = document.getElementById('sendBtn');
+  isGenerating = true;
   btn.disabled = true;
   btn.innerHTML = '<i class="ti ti-loader" style="animation:spin 1s linear infinite"></i> 生成中…';
 
@@ -2078,6 +2134,7 @@ async function generate() {
       pollingInterval = null;
     }
 
+    isGenerating = false;
     btn.disabled = false;
     btn.innerHTML = '<i class="ti ti-sparkles"></i> 生成';
 
@@ -2106,6 +2163,7 @@ async function generate() {
       clearInterval(pollingInterval);
       pollingInterval = null;
     }
+    isGenerating = false;
     btn.disabled = false;
     btn.innerHTML = '<i class="ti ti-sparkles"></i> 生成';
     toast('生成失败: ' + e.message);
@@ -2273,12 +2331,14 @@ function renderTree(node, container, depth=0) {
     switchToNode(node.id);
   };
 
-  const dotClass = node.is_current ? 'current' : (node.selected ? 'done' : (depth > 1 ? 'branch' : ''));
+  let dotClass = node.is_current ? 'current' : (node.selected ? 'done' : (depth > 1 ? 'branch' : ''));
+  if (node.generating) dotClass = 'generating';
   const selectedMeta = node.selected_count ? ` · 已选${node.selected_count}张` : '';
+  const generatingText = node.generating ? ' 生成中...' : '';
   tn.innerHTML = `
     <div class="tree-dot ${dotClass}"></div>
     <div>
-      <div class="tree-label">${node.label}</div>
+      <div class="tree-label">${node.label}${generatingText}</div>
       <div class="tree-meta">${node.id} · ${node.images}张图${selectedMeta}</div>
     </div>`;
   const dotEl = tn.querySelector('.tree-dot');

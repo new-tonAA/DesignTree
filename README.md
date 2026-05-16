@@ -8,7 +8,7 @@ An AI image generation tool designed for architectural design, featuring design 
 
 - **Design State Tree**: Visualize design iteration paths with support for rollback, branching, and node switching
 - **Multi-Platform Support**: OpenAI, OpenRouter, V3.CM, Volcengine, DeepSeek
-- **Multiple Model Selection**: gptimage2, gpt-image-1, BananaPro, Gemini and more
+- **Multiple Model Selection**: gpt-image-1 / gpt-image-1.5 / gpt-image-2, BananaPro, Gemini and more
 - **Style Preference Learning**: Automatically learn style preferences from selected images, intelligently recommend style tags
 - **Reference Image Upload**: Drag-and-drop support for reference images, submitted together with prompts
 - **Voice Input**: Real-time speech-to-text, automatically appended to input
@@ -106,7 +106,7 @@ root (initial requirement)
 
 | Platform | Image Models | Text Models |
 |----------|--------------|-------------|
-| V3.CM | gptimage2, gptimage3 | gpt-4o-mini |
+| V3.CM | gpt-image-1, gpt-image-1.5, gpt-image-2, qwen-image, gemini-* | gpt-4o-mini |
 | OpenAI | gpt-image-1, gpt-image-2 | gpt-4o |
 | OpenRouter | BananaPro, Gemini | Claude, Gemini |
 | Volcengine | volcengine-image | - |
@@ -117,7 +117,7 @@ root (initial requirement)
 | Function | API |
 |----------|-----|
 | Prompt Optimization | GPT-4o-mini / DeepSeek |
-| Image Generation | gptimage2 / OpenAI DALL-E |
+| Image Generation | gpt-image-* / OpenAI Image API |
 | Speech-to-Text | Whisper-1 |
 
 ## Tech Stack

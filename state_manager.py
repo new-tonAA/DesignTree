@@ -54,6 +54,7 @@ def _new_node(node_id: str, parent_id: Optional[str], user_input: str) -> dict:
         "selected_list": [],
         "selected":   None,
         "created_at": datetime.now().isoformat(),
+        "generating": True,  # 标记正在生成
     }
 
 
@@ -294,6 +295,7 @@ def get_tree_for_ui(session: dict) -> dict:
             "selected_count": selected_count,
             "images":     len(node["images"]),
             "is_current": node["id"] == session["current_node"],
+            "generating": node.get("generating", False),
             "children":   [_build(c) for c in node["children"]],
         }
     return _build("root")

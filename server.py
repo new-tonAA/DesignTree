@@ -11,6 +11,8 @@ server.py — FastAPI 后端
 import os
 import json
 import tempfile
+import time
+import base64
 from pathlib import Path
 
 import uvicorn
@@ -142,7 +144,6 @@ def get_state():
     s = _require_session()
     cur = s["nodes"][s["current_node"]]
     current_selected_urls = sm.get_node_selected_urls(s)
-    current_attached_images = sm.get_node_selected_images(s)
     current_attachments = sm.get_node_attachments(s)
     return {
         "project":       s["project"],
@@ -158,7 +159,7 @@ def get_state():
         "current_prompt": cur["prompt"],
         "current_selected": cur.get("selected"),  # legacy
         "current_selecteds": current_selected_urls,
-        "current_attached_images": current_attached_images,
+        "current_attached_images": current_attachments,  # legacy alias
         "current_attachments": current_attachments,
     }
 
@@ -209,9 +210,10 @@ def generate(req: GenerateReq):
         raise HTTPException(400, str(e))
     node_id = node["id"]
 
-    # 保存用户上传的附带图片
-    if req.prompt_images:
-        sm.add_attachments(s, node_id, req.prompt_images)
+    # 保存用户上传的附带图片（data URL -> static 文件）
+    attachments = _save_prompt_attachments(req.prompt_images or [])
+    if attachments:
+        sm.add_attachments(s, node_id, attachments)
 
     try:
         context = sm.build_context_for_agent(s, req.user_input, req.parent_node_id)
@@ -245,6 +247,7 @@ def generate(req: GenerateReq):
     ]
     if not ok_images:
         # 生成失败，删除空节点
+        _cleanup_attachment_files(attachments)
         sm.remove_node(s, node_id)
         first_error = next(
             (img.get("error") for img in images if isinstance(img, dict) and img.get("error")),
@@ -254,11 +257,16 @@ def generate(req: GenerateReq):
 
     sm.add_images(s, node_id, images)
 
+    # 清除生成中标记
+    s["nodes"][node_id]["generating"] = False
+    sm._save(s)
+
     return {
         "node_id": node_id,
         "optimized_prompt": prompt,
         "prompt_optimized": req.optimize_prompt,
         "prompt_warning": prompt_warning,
+        "attachments": attachments,
         "images": s["nodes"][node_id]["images"],
     }
 
@@ -440,6 +448,69 @@ def _history_for_ui(s: dict) -> list:
             "attachments": attachments,
         })
     return out
+
+
+def _save_prompt_attachments(prompt_images: list[dict]) -> list[dict]:
+    out: list[dict] = []
+    upload_dir = Path(__file__).parent / "static" / "uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    ext_map = {
+        "image/jpeg": ".jpg",
+        "image/jpg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+        "image/gif": ".gif",
+        "image/bmp": ".bmp",
+    }
+
+    for i, item in enumerate(prompt_images or []):
+        if not isinstance(item, dict):
+            continue
+        raw_url = str(item.get("url") or "").strip()
+        if not raw_url:
+            continue
+
+        # 已经是本地静态路径时，直接收录
+        if raw_url.startswith("/static/uploads/"):
+            out.append({"url": raw_url, "name": item.get("name", "")})
+            continue
+
+        if not raw_url.startswith("data:image"):
+            continue
+
+        try:
+            header, b64_data = raw_url.split(",", 1)
+            mime = "image/png"
+            if ";" in header:
+                mime = header[5:].split(";", 1)[0]
+            ext = ext_map.get(mime, ".png")
+            filename = f"attach_{int(time.time() * 1000)}_{i}{ext}"
+            local_path = upload_dir / filename
+            local_path.write_bytes(base64.b64decode(b64_data))
+            out.append({
+                "url": f"/static/uploads/{filename}",
+                "local_path": str(local_path),
+                "name": item.get("name", ""),
+            })
+        except Exception:
+            continue
+    return out
+
+
+def _cleanup_attachment_files(attachments: list[dict]) -> None:
+    for item in attachments or []:
+        if not isinstance(item, dict):
+            continue
+        local_path = item.get("local_path")
+        if not local_path:
+            continue
+        try:
+            p = Path(local_path)
+            if p.exists() and p.is_file():
+                p.unlink()
+        except Exception:
+            pass
 
 def _path_tags(s: dict) -> list:
     path    = sm.get_path_to_root(s)
