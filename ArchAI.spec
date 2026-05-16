@@ -1,11 +1,23 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
 
+# 收集 static 文件，排除 uploads（用户数据）
+static_files = []
+static_dir = 'static'
+for root, dirs, files in os.walk(static_dir):
+    # 排除 uploads 目录
+    if 'uploads' in dirs:
+        dirs.remove('uploads')
+    for f in files:
+        src = os.path.join(root, f)
+        dst = os.path.relpath(src, '.')
+        static_files.append((src, dst))
 
 a = Analysis(
     ['server.py'],
     pathex=[],
     binaries=[],
-    datas=[('templates', 'templates'), ('static', 'static'), ('sessions', 'sessions')],
+    datas=[('templates', 'templates')] + static_files,
     hiddenimports=[
         'uvicorn.logging', 'uvicorn.loops', 'uvicorn.loops.auto', 
         'uvicorn.protocols', 'uvicorn.protocols.http', 'uvicorn.protocols.http.auto', 
