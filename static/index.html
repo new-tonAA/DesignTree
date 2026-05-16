@@ -1511,9 +1511,19 @@ function syncComposerTextareaHeight() {
 // ── Image viewer ─────────────────────────────
 let viewerImageUrl = null;
 
-function showImageViewer(url) {
+function showImageViewer(url, fromPicked = false) {
   viewerImageUrl = url;
   document.getElementById('viewerImage').src = url;
+  const selectBtn = document.getElementById('viewerSelectBtn');
+  if (fromPicked) {
+    selectBtn.textContent = '取消选择';
+    selectBtn.style.background = 'var(--red)';
+    selectBtn.onclick = () => deselectFromViewer();
+  } else {
+    selectBtn.textContent = '选择';
+    selectBtn.style.background = 'var(--accent)';
+    selectBtn.onclick = () => selectFromViewer();
+  }
   document.getElementById('imageViewerModal').style.display = 'flex';
 }
 
@@ -1526,6 +1536,20 @@ async function selectFromViewer() {
   if (!viewerImageUrl) return;
   await selectImage(null, viewerImageUrl);
   hideImageViewer();
+}
+
+async function deselectFromViewer() {
+  if (!viewerImageUrl) return;
+  // 取消选择：传空字符串
+  const res = await fetch('/api/select_image', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({image_url: ''})
+  });
+  hideImageViewer();
+  if (res.ok) {
+    await refreshState();
+    toast('已取消选择');
+  }
 }
 
 function downloadFromViewer() {
@@ -2177,7 +2201,7 @@ function renderPicked(history) {
     <div class="picked-item ${h.is_current ? 'current' : ''}" data-node-id="${h.id}">
       <div style="position:relative">
         <img class="picked-thumb" src="${h.selected_image.url}" alt="selected ${h.id}" loading="lazy">
-        <button class="picked-zoom-btn" onclick="event.stopPropagation();showImageViewer('${h.selected_image.url}')" title="大图查看">🔍</button>
+        <button class="picked-zoom-btn" onclick="event.stopPropagation();showImageViewer('${h.selected_image.url}', true)" title="大图查看">🔍</button>
       </div>
       <div class="picked-meta">
         <div class="picked-node">${h.id}</div>
