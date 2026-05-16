@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>建筑 AI 设计助手</title>
+<style>
+  :root {
+    --bg: #0f0f10;
+    --bg2: #18181b;
+    --bg3: #222226;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.14);
+    --text: #e8e8ea;
+    --text2: #9999a8;
+    --text3: #5a5a6a;
+    --blue: #4a90e2;
+    --blue-dim: rgba(74,144,226,0.15);
+    --green: #3ecf8e;
+    --green-dim: rgba(62,207,142,0.15);
+    --amber: #f0a04a;
+    --red: #e05a5a;
+    --radius: 8px;
+    --radius-lg: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+         background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ── TOP BAR ── */
+  .topbar { height: 48px; background: var(--bg2); border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; padding: 0 16px; gap: 12px; flex-shrink: 0; }
+  .logo { font-size: 14px; font-weight: 600; color: var(--text); letter-spacing: .02em; }
+  .breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text2); }
+  .bc-sep { color: var(--text3); }
+  .bc-cur { color: var(--text); font-weight: 500; }
+  .spacer { flex: 1; }
+  .top-btn { padding: 5px 10px; border-radius: var(--radius); border: 1px solid var(--border2);
+             background: transparent; color: var(--text2); font-size: 12px; cursor: pointer;
+             display: flex; align-items: center; gap: 5px; transition: all .15s; }
+  .top-btn:hover { border-color: var(--blue); color: var(--blue); }
+
+  /* ── LAYOUT ── */
+  .layout { display: grid; grid-template-columns: 1fr 288px; flex: 1; overflow: hidden; }
+
+  /* ── MAIN AREA ── */
+  .main { display: flex; flex-direction: column; overflow: hidden; }
+  .img-area { flex: 1; overflow-y: auto; padding: 14px; }
+  .img-area::-webkit-scrollbar { width: 4px; }
+  .img-area::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .img-grid { display: grid; gap: 10px; }
+  .g1 { grid-template-columns: 1fr; }
+  .g2 { grid-template-columns: 1fr 1fr; }
+  .g4 { grid-template-columns: 1fr 1fr; }
+  .g6 { grid-template-columns: 1fr 1fr 1fr; }
+
+  .img-card { border-radius: var(--radius-lg); border: 1.5px solid var(--border);
+              cursor: pointer; aspect-ratio: 16/10; background: var(--bg3);
+              display: flex; align-items: center; justify-content: center;
+              flex-direction: column; gap: 6px; position: relative;
+              transition: border-color .15s, transform .1s; overflow: hidden; }
+  .img-card img { width: 100%; height: 100%; object-fit: cover; border-radius: calc(var(--radius-lg) - 1.5px); }
+  .img-card:hover { border-color: var(--border2); transform: scale(1.01); }
+  .img-card.sel { border-color: var(--green); }
+  .img-card.sel .sel-badge { display: flex; }
+  .sel-badge { display: none; position: absolute; top: 8px; right: 8px; background: var(--green);
+               color: #000; font-size: 10px; font-weight: 600; padding: 2px 8px;
+               border-radius: 99px; align-items: center; gap: 3px; }
+  .img-placeholder { font-size: 32px; color: var(--border2); }
+  .img-num { font-size: 11px; color: var(--text3); }
+
+  /* loading shimmer */
+  .img-card.loading { border-style: dashed; }
+  .shimmer { width: 40px; height: 40px; border: 2px solid var(--border2); border-top-color: var(--blue);
+             border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── FOOTER / INPUT ── */
+  .footer { background: var(--bg2); border-top: 1px solid var(--border); padding: 10px 14px; flex-shrink: 0; }
+  .footer-top { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .tool-btn { padding: 4px 9px; border-radius: var(--radius); border: 1px solid var(--border2);
+              background: transparent; color: var(--text2); font-size: 12px; cursor: pointer;
+              display: flex; align-items: center; gap: 4px; transition: all .15s; }
+  .tool-btn:hover { border-color: var(--blue); color: var(--blue); }
+  .tool-btn.recording { border-color: var(--red); color: var(--red); animation: pulse .6s infinite alternate; }
+  @keyframes pulse { to { opacity: .6; } }
+  .n-label { font-size: 11px; color: var(--text3); margin-left: auto; }
+  .n-btns { display: flex; gap: 3px; }
+  .n-btn { width: 28px; height: 22px; border-radius: 5px; border: 1px solid var(--border2);
+           background: transparent; color: var(--text2); font-size: 11px; cursor: pointer; transition: all .15s; }
+  .n-btn.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+
+  .input-row { display: flex; gap: 8px; align-items: flex-end; }
+  .input-row textarea { flex: 1; resize: none; font-size: 13px; padding: 9px 12px;
+                        border-radius: var(--radius); border: 1px solid var(--border2);
+                        background: var(--bg3); color: var(--text); font-family: inherit; height: 62px;
+                        transition: border-color .15s; }
+  .input-row textarea:focus { outline: none; border-color: var(--blue); }
+  .send-btn { padding: 0 18px; height: 62px; border-radius: var(--radius);
+              border: none; background: var(--blue); color: #fff; font-size: 13px; font-weight: 500;
+              cursor: pointer; display: flex; align-items: center; gap: 6px;
+              transition: opacity .15s; white-space: nowrap; }
+  .send-btn:hover { opacity: .85; }
+  .send-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* ── SIDEBAR ── */
+  .side { background: var(--bg2); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+  .side-tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .stab { flex: 1; padding: 10px 4px; font-size: 11px; color: var(--text3); text-align: center;
+          cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent;
+          margin-bottom: -1px; transition: all .15s; }
+  .stab:hover { color: var(--text2); }
+  .stab.on { color: var(--blue); border-bottom-color: var(--blue); font-weight: 500; }
+  .side-body { flex: 1; overflow-y: auto; padding: 12px; }
+  .side-body::-webkit-scrollbar { width: 3px; }
+  .side-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .panel { display: none; }
+  .panel.on { display: block; }
+
+  /* ── TREE ── */
+  .tn { display: flex; align-items: flex-start; gap: 8px; padding: 6px 7px;
+        border-radius: var(--radius); cursor: pointer; margin-bottom: 1px; }
+  .tn:hover { background: var(--bg3); }
+  .tn.cur { background: var(--blue-dim); }
+  .tn-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 4px;
+            border: 1.5px solid var(--border2); }
+  .tn-dot.done { background: var(--green); border-color: var(--green); }
+  .tn-dot.cur { background: var(--blue); border-color: var(--blue); }
+  .tn-dot.branch { border-color: var(--amber); }
+  .tn-label { font-size: 12px; color: var(--text); line-height: 1.4; }
+  .tn.cur .tn-label { color: #7bb8f5; font-weight: 500; }
+  .tn-meta { font-size: 10px; color: var(--text3); margin-top: 1px; }
+  .tn-children { margin-left: 12px; border-left: 1px solid var(--border); padding-left: 8px; }
+
+  .prompt-chain { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .pchain-title { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
+  .ptag { display: inline-block; border-radius: 4px; padding: 2px 7px; font-size: 11px;
+          margin: 2px 2px 2px 0; border: 1px solid var(--border); color: var(--text2);
+          background: var(--bg3); }
+  .ptag.new { border-color: rgba(62,207,142,.4); color: var(--green); background: var(--green-dim); }
+
+  /* ── HISTORY ── */
+  .sec-title { font-size: 10px; color: var(--text3); text-transform: uppercase;
+               letter-spacing: .05em; margin: 14px 0 8px; }
+  .sec-title:first-child { margin-top: 0; }
+  .h-row { padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .h-row:last-child { border-bottom: none; }
+  .h-ver { font-size: 10px; font-weight: 600; color: var(--blue); margin-bottom: 3px; }
+  .h-text { font-size: 12px; color: var(--text2); line-height: 1.5; }
+  .h-sel { font-size: 10px; color: var(--green); margin-top: 3px; }
+  .h-cur { background: var(--blue-dim); padding: 8px; border-radius: var(--radius); border: 1px solid rgba(74,144,226,.2); }
+  .h-branch { opacity: .5; }
+  .save-info { font-size: 11px; color: var(--text3); line-height: 1.8;
+               background: var(--bg3); padding: 8px 10px; border-radius: var(--radius);
+               border: 1px solid var(--border); }
+  .save-info code { color: var(--amber); font-size: 10px; }
+
+  /* ── STYLE ── */
+  .style-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .sname { font-size: 12px; color: var(--text2); min-width: 60px; }
+  .sbar-bg { flex: 1; height: 3px; border-radius: 2px; background: var(--bg3); }
+  .sbar-fill { height: 100%; border-radius: 2px; background: var(--green); transition: width .4s; }
+  .sbar-fill.neg { background: var(--red); }
+  .sval { font-size: 10px; color: var(--text3); min-width: 28px; text-align: right; }
+  .ref-thumb { border-radius: var(--radius); padding: 7px 10px; background: var(--bg3);
+               border: 1px solid var(--border); font-size: 11px; color: var(--text2);
+               display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+  .ref-add { width: 100%; padding: 7px; border-radius: var(--radius); border: 1px dashed var(--border2);
+             background: transparent; color: var(--text3); font-size: 12px; cursor: pointer;
+             display: flex; align-items: center; justify-content: center; gap: 5px; transition: all .15s; }
+  .ref-add:hover { border-color: var(--blue); color: var(--blue); }
+
+  /* ── MODALS / OVERLAYS ── */
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.65); display: flex;
+             align-items: center; justify-content: center; z-index: 100; }
+  .modal { background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius-lg);
+           padding: 24px; width: 440px; max-width: 90vw; }
+  .modal h2 { font-size: 16px; font-weight: 500; margin-bottom: 16px; }
+  .modal input { width: 100%; padding: 9px 12px; border-radius: var(--radius);
+                 border: 1px solid var(--border2); background: var(--bg3); color: var(--text);
+                 font-size: 13px; font-family: inherit; margin-bottom: 10px; }
+  .modal input:focus { outline: none; border-color: var(--blue); }
+  .modal textarea { width: 100%; height: 80px; resize: none; padding: 9px 12px;
+                    border-radius: var(--radius); border: 1px solid var(--border2);
+                    background: var(--bg3); color: var(--text); font-size: 13px;
+                    font-family: inherit; margin-bottom: 10px; }
+  .modal textarea:focus { outline: none; border-color: var(--blue); }
+  .modal-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+  .btn-cancel { padding: 7px 14px; border-radius: var(--radius); border: 1px solid var(--border2);
+                background: transparent; color: var(--text2); font-size: 13px; cursor: pointer; }
+  .btn-ok { padding: 7px 18px; border-radius: var(--radius); border: none;
+            background: var(--blue); color: #fff; font-size: 13px; cursor: pointer; font-weight: 500; }
+  .modal label { font-size: 12px; color: var(--text2); display: block; margin-bottom: 5px; }
+
+  /* Toast */
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+           background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius);
+           padding: 9px 16px; font-size: 13px; color: var(--text); z-index: 200;
+           animation: fadeup .2s ease; }
+  @keyframes fadeup { from { opacity:0; transform: translateX(-50%) translateY(8px); } }
+
+  /* ── SESSIONS LIST (home) ── */
+  .home { flex: 1; overflow-y: auto; padding: 40px; }
+  .home-title { font-size: 20px; font-weight: 500; margin-bottom: 24px; }
+  .sess-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .sess-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg);
+               padding: 14px 16px; cursor: pointer; transition: border-color .15s; }
+  .sess-card:hover { border-color: var(--border2); }
+  .sess-name { font-size: 13px; font-weight: 500; margin-bottom: 5px; }
+  .sess-meta { font-size: 11px; color: var(--text3); }
+  .new-card { background: transparent; border: 1px dashed var(--border2); display: flex;
+              align-items: center; justify-content: center; flex-direction: column; gap: 6px;
+              font-size: 12px; color: var(--text3); min-height: 80px; }
+  .new-card:hover { border-color: var(--blue); color: var(--blue); }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <span class="logo">🏗 建筑 AI 设计</span>
+  <span class="bc-sep">·</span>
+  <div class="breadcrumb" id="breadcrumb">
+    <span style="color:var(--text3)">未打开项目</span>
+  </div>
+  <div class="spacer"></div>
+  <button class="top-btn" onclick="showHome()">📁 项目列表</button>
+  <button class="top-btn" onclick="showNewProjectModal()">＋ 新建项目</button>
+  <button class="top-btn" id="apiKeyBtn" onclick="showApiKeyModal()">🔑 API Key</button>
+</div>
+
+<!-- HOME / SESSIONS LIST (shown when no project open) -->
+<div class="home" id="homeView">
+  <div class="home-title">我的设计项目</div>
+  <div class="sess-grid" id="sessGrid">
+    <div class="sess-card new-card" onclick="showNewProjectModal()">
+      <span style="font-size:20px">＋</span>
+      <span>新建项目</span>
+    </div>
+  </div>
+  <div style="font-size:12px;color:var(--text3)">💡 项目数据自动保存为本地 JSON 文件，无需数据库</div>
+</div>
+
+<!-- MAIN APP (hidden until project opened) -->
+<div class="layout" id="appView" style="display:none">
+  <div class="main">
+    <!-- count selector -->
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0">
+      <span style="font-size:11px;color:var(--text3)">生成张数</span>
+      <div class="n-btns">
+        <button class="n-btn" onclick="setN(this,1,'g1')">1</button>
+        <button class="n-btn" onclick="setN(this,2,'g2')">2</button>
+        <button class="n-btn on" onclick="setN(this,4,'g4')">4</button>
+        <button class="n-btn" onclick="setN(this,6,'g6')">6</button>
+      </div>
+      <div class="spacer"></div>
+      <span id="promptPreview" style="font-size:11px;color:var(--text3);max-width:400px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;"></span>
+    </div>
+
+    <div class="img-area" id="imgArea">
+      <div class="img-grid g4" id="imgGrid"></div>
+    </div>
+
+    <div class="footer">
+      <div class="footer-top">
+        <button class="tool-btn" id="voiceBtn" onclick="toggleVoice()">🎤 语音输入</button>
+        <button class="tool-btn" onclick="uploadRefImage()">🖼 参考图</button>
+        <button class="tool-btn" onclick="rollback()">↩ 回退节点</button>
+        <button class="tool-btn" onclick="exportSelected()">💾 导出选中图</button>
+      </div>
+      <div class="input-row">
+        <textarea id="userInput" placeholder="描述本次改进方向，例如：调整屋顶为弧形，增加绿化平台，黄昏暖光效果…"></textarea>
+        <button class="send-btn" id="sendBtn" onclick="doIterate()">✦ 生成</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SIDEBAR -->
+  <div class="side">
+    <div class="side-tabs">
+      <button class="stab on" onclick="switchTab(this,'tTree')">状态树</button>
+      <button class="stab" onclick="switchTab(this,'tHist')">历史</button>
+      <button class="stab" onclick="switchTab(this,'tStyle')">风格</button>
+    </div>
+    <div class="side-body">
+      <div class="panel on" id="tTree">
+        <div id="treeWrap"></div>
+        <div class="prompt-chain" id="promptChain" style="display:none">
+          <div class="pchain-title">当前 prompt 路径</div>
+          <div id="promptTags"></div>
+        </div>
+      </div>
+      <div class="panel" id="tHist">
+        <div class="sec-title">修改历史</div>
+        <div id="histList"></div>
+        <div class="sec-title">保存位置</div>
+        <div class="save-info" id="saveInfo">暂无</div>
+      </div>
+      <div class="panel" id="tStyle">
+        <div class="sec-title">风格偏好（自动学习）</div>
+        <div id="styleList"></div>
+        <div class="sec-title" style="margin-top:16px">参考图</div>
+        <div id="refList"></div>
+        <button class="ref-add" onclick="uploadRefImage()">＋ 上传参考图</button>
+        <div style="font-size:10px;color:var(--text3);margin-top:8px">每次选图后自动更新风格权重</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- NEW PROJECT MODAL -->
+<div class="overlay" id="newProjModal" style="display:none">
+  <div class="modal">
+    <h2>新建设计项目</h2>
+    <label>项目名称</label>
+    <input id="npName" placeholder="例：滨海办公楼 A 栋" />
+    <label>初始设计需求</label>
+    <textarea id="npInput" placeholder="例：现代简约风格商业综合体，8层，玻璃幕墙立面，俯视视角，黄昏暖光…"></textarea>
+    <label>OpenAI API Key</label>
+    <input id="npKey" type="password" placeholder="sk-..." />
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('newProjModal')">取消</button>
+      <button class="btn-ok" onclick="createProject()">创建并生成</button>
+    </div>
+  </div>
+</div>
+
+<!-- API KEY MODAL -->
+<div class="overlay" id="apiKeyModal" style="display:none">
+  <div class="modal">
+    <h2>设置 API Key</h2>
+    <label>OpenAI API Key（存储在本地 localStorage，不会上传）</label>
+    <input id="akInput" type="password" placeholder="sk-..." />
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('apiKeyModal')">取消</button>
+      <button class="btn-ok" onclick="saveApiKey()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- hidden file input for ref image -->
+<input type="file" id="refFileInput" accept="image/*" style="display:none" onchange="doUploadRef(this)">
+
+<script>
+// ─── STATE ───────────────────────────────────────────────────────────
+let state = {
+  session: null,        // full session data from API
+  currentNodeId: null,
+  imgCount: 4,
+  imgGridClass: 'g4',
+  apiKey: localStorage.getItem('arch_api_key') || '',
+  isGenerating: false,
+  mediaRecorder: null,
+  audioChunks: [],
+};
+
+// ─── UTILS ───────────────────────────────────────────────────────────
+function toast(msg, dur=2500) {
+  const t = document.createElement('div');
+  t.className = 'toast'; t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), dur);
+}
+
+async function api(path, opts={}) {
+  const r = await fetch(path, { headers:{'Content-Type':'application/json'}, ...opts });
+  if (!r.ok) { const e = await r.json(); throw new Error(e.detail || r.statusText); }
+  return r.json();
+}
+
+function fmt(ts) {
+  return new Date(ts*1000).toLocaleDateString('zh',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+}
+
+// ─── HOME / SESSIONS ──────────────────────────────────────────────────
+function showHome() {
+  document.getElementById('homeView').style.display = '';
+  document.getElementById('appView').style.display = 'none';
+  loadSessions();
+}
+
+async function loadSessions() {
+  const sessions = await api('/api/sessions');
+  const grid = document.getElementById('sessGrid');
+  grid.innerHTML = `<div class="sess-card new-card" onclick="showNewProjectModal()"><span style="font-size:20px">＋</span><span>新建项目</span></div>`;
+  sessions.forEach(s => {
+    const card = document.createElement('div');
+    card.className = 'sess-card';
+    card.innerHTML = `<div class="sess-name">${s.project_name}</div>
+      <div class="sess-meta">${s.node_count} 个节点 · ${fmt(s.updated_at)}</div>
+      <div class="sess-meta" style="margin-top:2px;color:var(--text3)">${s.current_label}</div>`;
+    card.onclick = () => openSession(s.session_id);
+    grid.appendChild(card);
+  });
+}
+
+async function openSession(sessionId) {
+  const data = await api(`/api/session/${sessionId}`);
+  state.session = data;
+  state.currentNodeId = data.current_node_id;
+  state.apiKey = state.apiKey || '';
+  renderApp();
+}
+
+// ─── APP RENDER ───────────────────────────────────────────────────────
+function renderApp() {
+  document.getElementById('homeView').style.display = 'none';
+  document.getElementById('appView').style.display = '';
+  renderBreadcrumb();
+  renderImages();
+  renderTree();
+  renderHistory();
+  renderStyle();
+}
+
+function renderBreadcrumb() {
+  const s = state.session;
+  const node = s.nodes[state.currentNodeId];
+  const path = getPathToRoot(state.currentNodeId);
+  const bc = document.getElementById('breadcrumb');
+  bc.innerHTML = path.map((n,i) =>
+    i === path.length-1
+      ? `<span class="bc-cur">${n.label}</span>`
+      : `<span>${n.label}</span><span class="bc-sep">›</span>`
+  ).join('');
+  // prompt preview
+  document.getElementById('promptPreview').textContent =
+    node.assembled_prompt ? node.assembled_prompt.slice(0,80)+'…' : '';
+}
+
+function getPathToRoot(nodeId) {
+  const nodes = state.session.nodes;
+  const path = [];
+  let cur = nodeId;
+  while (cur) { path.unshift(nodes[cur]); cur = nodes[cur].parent_id; }
+  return path;
+}
+
+function renderImages() {
+  const grid = document.getElementById('imgGrid');
+  grid.className = 'img-grid ' + state.imgGridClass;
+  const node = state.session.nodes[state.currentNodeId];
+  if (!node || !node.images.length) {
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:60px 0;color:var(--text3);font-size:13px">暂无图片，在下方输入需求后点击生成</div>`;
+    return;
+  }
+  grid.innerHTML = node.images.map((url,i) => `
+    <div class="img-card ${node.selected_image===url?'sel':''}" onclick="selectImage('${url}')">
+      <span class="sel-badge">✓ 已选</span>
+      ${url.startsWith('/images/') ? `<img src="${url}" alt="图${i+1}">` : `<div class="img-placeholder">🏛</div><div class="img-num">图 ${i+1}</div>`}
+    </div>`).join('');
+}
+
+function showLoadingImages(count) {
+  const grid = document.getElementById('imgGrid');
+  grid.className = 'img-grid ' + state.imgGridClass;
+  grid.innerHTML = Array(count).fill(0).map((_,i) =>
+    `<div class="img-card loading"><div class="shimmer"></div><div class="img-num" style="margin-top:8px">生成中…</div></div>`
+  ).join('');
+}
+
+function renderTree() {
+  const wrap = document.getElementById('treeWrap');
+  wrap.innerHTML = renderTreeNode(state.session.tree);
+  renderPromptChain();
+}
+
+function renderTreeNode(node) {
+  const isCur = node.node_id === state.currentNodeId;
+  const dotClass = isCur ? 'cur' : node.selected ? 'done' : node.children.length ? '' : 'branch';
+  const html = `
+    <div class="tn ${isCur?'cur':''}" onclick="switchNode('${node.node_id}')">
+      <div class="tn-dot ${dotClass}"></div>
+      <div>
+        <div class="tn-label">${node.label}</div>
+        <div class="tn-meta">${node.node_id} · ${node.image_count} 张图${node.selected?' · 已选图':''}</div>
+      </div>
+    </div>
+    ${node.children.length ? `<div class="tn-children">${node.children.map(renderTreeNode).join('')}</div>` : ''}
+  `;
+  return html;
+}
+
+function renderPromptChain() {
+  const path = getPathToRoot(state.currentNodeId);
+  if (path.length < 2) { document.getElementById('promptChain').style.display='none'; return; }
+  document.getElementById('promptChain').style.display = '';
+  const tags = path.map((n,i) =>
+    `<span class="ptag ${i===path.length-1?'new':''}">${n.user_input.slice(0,18)}</span>`
+  ).join('');
+  document.getElementById('promptTags').innerHTML = tags;
+}
+
+function renderHistory() {
+  const s = state.session;
+  const nodes = s.nodes;
+  const list = document.getElementById('histList');
+  // BFS order
+  const order = [];
+  const q = [s.root_id];
+  while (q.length) { const id = q.shift(); order.push(id); (nodes[id].children||[]).forEach(c=>q.push(c)); }
+  list.innerHTML = order.map(id => {
+    const n = nodes[id];
+    const isCur = id === state.currentNodeId;
+    const isBranch = !getPathToRoot(state.currentNodeId).find(p=>p.node_id===id) && id !== state.currentNodeId;
+    return `<div class="h-row ${isCur?'h-cur':''} ${isBranch?'h-branch':''}">
+      <div class="h-ver">${n.node_id.toUpperCase()}</div>
+      <div class="h-text">${n.user_input}</div>
+      ${n.selected_image ? `<div class="h-sel">✓ 已选图</div>` : ''}
+      ${isCur ? `<div style="font-size:10px;color:var(--blue);margin-top:2px">← 当前节点</div>` : ''}
+    </div>`;
+  }).join('');
+
+  document.getElementById('saveInfo').innerHTML =
+    `自动保存至：<br><code>sessions/${s.session_id}.json</code><br><span style="color:var(--text3);font-size:10px">包含完整状态树、prompt历史、图片路径</span>`;
+}
+
+function renderStyle() {
+  const weights = state.session.style_weights || {};
+  const entries = Object.entries(weights).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]));
+  const list = document.getElementById('styleList');
+  if (!entries.length) { list.innerHTML = `<div style="font-size:12px;color:var(--text3)">选图后自动生成风格偏好</div>`; return; }
+  list.innerHTML = entries.map(([k,v]) => {
+    const neg = v < 0;
+    const pct = Math.abs(v)*100;
+    const lbl = pct>70?'强':pct>40?'中':'弱';
+    return `<div class="style-row">
+      <span class="sname">${k}</span>
+      <div class="sbar-bg"><div class="sbar-fill ${neg?'neg':''}" style="width:${pct}%"></div></div>
+      <span class="sval" style="${neg?'color:var(--red)':''}">${neg?'排斥':lbl}</span>
+    </div>`;
+  }).join('');
+
+  const refs = state.session.reference_images || [];
+  const refList = document.getElementById('refList');
+  refList.innerHTML = refs.length
+    ? refs.map(r=>`<div class="ref-thumb">🖼 ${r.split('/').pop()}</div>`).join('')
+    : `<div style="font-size:12px;color:var(--text3);margin-bottom:8px">暂无参考图</div>`;
+}
+
+// ─── USER ACTIONS ─────────────────────────────────────────────────────
+async function selectImage(url) {
+  if (!state.apiKey) { showApiKeyModal(); return; }
+  await api('/api/select_image', {
+    method:'POST', body: JSON.stringify({
+      session_id: state.session.session_id,
+      node_id: state.currentNodeId,
+      image_url: url,
+      api_key: state.apiKey,
+    })
+  });
+  const data = await api(`/api/session/${state.session.session_id}`);
+  state.session = data;
+  renderImages();
+  renderStyle();
+  toast('已选中图，风格偏好已更新');
+}
+
+async function doIterate() {
+  if (state.isGenerating) return;
+  const input = document.getElementById('userInput').value.trim();
+  if (!input) { toast('请输入改进要求'); return; }
+  if (!state.apiKey) { showApiKeyModal(); return; }
+  if (!state.session) { toast('请先打开或新建项目'); return; }
+
+  state.isGenerating = true;
+  document.getElementById('sendBtn').disabled = true;
+  document.getElementById('sendBtn').textContent = '生成中…';
+  showLoadingImages(state.imgCount);
+
+  try {
+    const result = await api('/api/iterate', {
+      method:'POST', body: JSON.stringify({
+        session_id: state.session.session_id,
+        parent_node_id: state.currentNodeId,
+        user_input: input,
+        api_key: state.apiKey,
+        image_count: state.imgCount,
+      })
+    });
+    state.currentNodeId = result.node_id;
+    // reload full session
+    const data = await api(`/api/session/${state.session.session_id}`);
+    state.session = data;
+    document.getElementById('userInput').value = '';
+    renderApp();
+    toast(`生成完成，共 ${result.images.length} 张`);
+  } catch(e) {
+    toast('生成失败：' + e.message);
+    renderImages();
+  } finally {
+    state.isGenerating = false;
+    document.getElementById('sendBtn').disabled = false;
+    document.getElementById('sendBtn').textContent = '✦ 生成';
+  }
+}
+
+async function createProject() {
+  const name = document.getElementById('npName').value.trim();
+  const input = document.getElementById('npInput').value.trim();
+  const key = document.getElementById('npKey').value.trim() || state.apiKey;
+  if (!name || !input) { toast('请填写项目名称和初始需求'); return; }
+  if (!key) { toast('请填写 API Key'); return; }
+  state.apiKey = key;
+  localStorage.setItem('arch_api_key', key);
+  closeModal('newProjModal');
+
+  // show spinner in home
+  toast('正在创建项目并生成初始图片…', 5000);
+
+  try {
+    const result = await api('/api/new_project', {
+      method:'POST', body: JSON.stringify({
+        project_name: name,
+        initial_input: input,
+        api_key: key,
+        image_count: state.imgCount,
+      })
+    });
+    await openSession(result.session_id);
+    toast('项目创建成功！');
+  } catch(e) {
+    toast('创建失败：' + e.message);
+    showHome();
+  }
+}
+
+function switchNode(nodeId) {
+  state.currentNodeId = nodeId;
+  renderApp();
+  // also update server's current_node
+  api(`/api/set_current_node?session_id=${state.session.session_id}&node_id=${nodeId}`, {method:'POST'}).catch(()=>{});
+}
+
+function rollback() {
+  const path = getPathToRoot(state.currentNodeId);
+  if (path.length <= 1) { toast('已在根节点'); return; }
+  const parent = path[path.length-2];
+  switchNode(parent.node_id);
+  toast(`已回退到：${parent.label}`);
+}
+
+function exportSelected() {
+  const node = state.session.nodes[state.currentNodeId];
+  if (!node.selected_image) { toast('请先选中一张图'); return; }
+  const a = document.createElement('a');
+  a.href = node.selected_image;
+  a.download = `design_${state.currentNodeId}.png`;
+  a.click();
+}
+
+// ─── IMAGE COUNT ──────────────────────────────────────────────────────
+function setN(el, n, cls) {
+  document.querySelectorAll('.n-btn').forEach(b=>b.classList.remove('on'));
+  el.classList.add('on');
+  state.imgCount = n;
+  state.imgGridClass = cls;
+  const grid = document.getElementById('imgGrid');
+  grid.className = 'img-grid ' + cls;
+}
+
+// ─── TABS ─────────────────────────────────────────────────────────────
+function switchTab(el, id) {
+  document.querySelectorAll('.stab').forEach(t=>t.classList.remove('on'));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));
+  el.classList.add('on');
+  document.getElementById(id).classList.add('on');
+}
+
+// ─── VOICE INPUT ──────────────────────────────────────────────────────
+async function toggleVoice() {
+  const btn = document.getElementById('voiceBtn');
+  if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
+    state.mediaRecorder.stop();
+    btn.classList.remove('recording');
+    btn.textContent = '🎤 语音输入';
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    state.audioChunks = [];
+    state.mediaRecorder = new MediaRecorder(stream);
+    state.mediaRecorder.ondataavailable = e => state.audioChunks.push(e.data);
+    state.mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(t=>t.stop());
+      const blob = new Blob(state.audioChunks, {type:'audio/webm'});
+      const form = new FormData();
+      form.append('audio', blob, 'audio.webm');
+      form.append('api_key', state.apiKey);
+      toast('正在识别语音…', 3000);
+      try {
+        const r = await fetch('/api/transcribe', {method:'POST', body:form});
+        const data = await r.json();
+        document.getElementById('userInput').value += (document.getElementById('userInput').value ? ' ' : '') + data.text;
+        toast('语音识别完成');
+      } catch(e) { toast('语音识别失败：' + e.message); }
+    };
+    state.mediaRecorder.start();
+    btn.classList.add('recording');
+    btn.textContent = '⏹ 停止录音';
+  } catch(e) { toast('无法访问麦克风：' + e.message); }
+}
+
+// ─── REF IMAGE ────────────────────────────────────────────────────────
+function uploadRefImage() { document.getElementById('refFileInput').click(); }
+
+async function doUploadRef(input) {
+  if (!input.files.length || !state.session) return;
+  const form = new FormData();
+  form.append('session_id', state.session.session_id);
+  form.append('file', input.files[0]);
+  try {
+    await fetch('/api/upload_reference', {method:'POST', body:form});
+    const data = await api(`/api/session/${state.session.session_id}`);
+    state.session = data;
+    renderStyle();
+    toast('参考图已上传');
+  } catch(e) { toast('上传失败：' + e.message); }
+  input.value = '';
+}
+
+// ─── MODALS ───────────────────────────────────────────────────────────
+function showNewProjectModal() {
+  document.getElementById('npKey').value = state.apiKey;
+  document.getElementById('newProjModal').style.display = '';
+}
+function showApiKeyModal() {
+  document.getElementById('akInput').value = state.apiKey;
+  document.getElementById('apiKeyModal').style.display = '';
+}
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+function saveApiKey() {
+  const k = document.getElementById('akInput').value.trim();
+  if (k) { state.apiKey = k; localStorage.setItem('arch_api_key', k); toast('API Key 已保存'); }
+  closeModal('apiKeyModal');
+}
+
+// click outside modal to close
+document.querySelectorAll('.overlay').forEach(ov => {
+  ov.addEventListener('click', e => { if(e.target===ov) ov.style.display='none'; });
+});
+
+// ─── INIT ─────────────────────────────────────────────────────────────
+loadSessions();
+</script>
+</body>
+</html>

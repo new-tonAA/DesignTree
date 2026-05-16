@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ArchAI — 建筑设计工作台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.x/tabler-icons.min.css">
+<style>
+/* ── Reset & Base ───────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:     #0e0f11;
+  --bg2:    #141518;
+  --bg3:    #1a1c20;
+  --bg4:    #222428;
+  --line:   rgba(255,255,255,0.07);
+  --line2:  rgba(255,255,255,0.12);
+  --text:   #e8e6e0;
+  --muted:  #7a7870;
+  --dim:    #4a4946;
+  --accent: #c8a96e;
+  --acl:    rgba(200,169,110,0.15);
+  --green:  #5a9e7a;
+  --greenl: rgba(90,158,122,0.15);
+  --red:    #c06060;
+  --blue:   #5b8fbf;
+  --bluel:  rgba(91,143,191,0.12);
+  --side-width: 288px;
+  --radius: 8px;
+  --sans:   'DM Sans', sans-serif;
+  --serif:  'DM Serif Display', serif;
+  --mono:   'JetBrains Mono', monospace;
+}
+html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; }
+
+/* ── Layout ─────────────────────────────────── */
+.app { display: grid; grid-template-rows: 44px 1fr; height: 100vh; }
+.titlebar { display: flex; align-items: center; gap: 10px; padding: 0 16px; background: var(--bg2); border-bottom: 1px solid var(--line); user-select: none; }
+.logo { font-family: var(--serif); font-size: 17px; color: var(--accent); letter-spacing: 0.02em; }
+.proj-name { font-size: 12px; color: var(--muted); font-family: var(--mono); margin-left: 8px; }
+.tbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+.workspace { display: grid; grid-template-columns: minmax(0, 1fr) 6px var(--side-width); overflow: hidden; }
+.side-resizer {
+  cursor: col-resize;
+  background: var(--line);
+  transition: background .12s;
+}
+.side-resizer:hover,
+body.resizing .side-resizer { background: var(--line2); }
+body.resizing { cursor: col-resize; user-select: none; }
+
+/* ── Main (left) ────────────────────────────── */
+.main { display: flex; flex-direction: column; background: var(--bg); overflow: hidden; }
+.topbar { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--bg2); flex-shrink: 0; }
+.breadcrumb { display: flex; align-items: center; gap: 5px; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.bc-sep { color: var(--dim); }
+.bc-cur { color: var(--accent); }
+.n-btns { display: flex; gap: 3px; margin-left: auto; align-items: center; }
+.n-lbl { font-size: 11px; color: var(--muted); margin-right: 4px; }
+.nb { width: 26px; height: 22px; border-radius: 4px; border: 1px solid var(--line2); background: transparent; color: var(--muted); font-size: 11px; cursor: pointer; font-family: var(--mono); transition: all .15s; }
+.nb:hover { border-color: var(--accent); color: var(--accent); }
+.nb.on { background: var(--acl); border-color: var(--accent); color: var(--accent); }
+
+/* ── Image grid ─────────────────────────────── */
+.img-area { flex: 1; overflow-y: auto; padding: 14px; }
+.img-area::-webkit-scrollbar { width: 4px; }
+.img-area::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 2px; }
+.img-grid { display: grid; gap: 10px; }
+.g1 { grid-template-columns: 1fr; }
+.g2 { grid-template-columns: 1fr 1fr; }
+.g4 { grid-template-columns: 1fr 1fr; }
+.g6 { grid-template-columns: 1fr 1fr 1fr; }
+
+.img-card {
+  aspect-ratio: 16/9;
+  border-radius: var(--radius);
+  border: 1.5px solid var(--line);
+  background: var(--bg3);
+  display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 6px;
+  cursor: pointer; position: relative; overflow: hidden;
+  transition: border-color .2s, transform .15s;
+}
+.img-card:hover { border-color: var(--line2); transform: translateY(-1px); }
+.img-card.sel { border-color: var(--green); }
+.img-card.sel::after {
+  content: '✓ 已选';
+  position: absolute; top: 8px; right: 8px;
+  background: var(--green); color: #fff;
+  font-size: 10px; padding: 2px 8px; border-radius: 99px; font-family: var(--sans);
+}
+.img-card img { width: 100%; height: 100%; object-fit: cover; border-radius: calc(var(--radius) - 1px); }
+.img-placeholder { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.img-placeholder i { font-size: 28px; color: var(--dim); }
+.img-placeholder span { font-size: 11px; color: var(--dim); font-family: var(--mono); }
+.img-card.loading .img-placeholder i { animation: spin 1.2s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.gen-error { font-size: 11px; color: var(--red); padding: 4px 8px; background: rgba(192,96,96,.1); border-radius: 4px; border: 1px solid rgba(192,96,96,.2); }
+
+/* ── Footer / Input ─────────────────────────── */
+.footer { flex-shrink: 0; padding: 10px 14px; border-top: 1px solid var(--line); background: var(--bg2); }
+
+.cfg-row { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; align-items: center; }
+.cfg-grp { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 120px; }
+.cfg-lbl { font-size: 10px; font-weight: 600; color: var(--dim); text-transform: uppercase; letter-spacing: .1em; }
+.cfg-sel {
+  background: var(--bg3); border: 1px solid var(--line2); border-radius: 6px;
+  color: var(--text); font-family: var(--mono); font-size: 12px;
+  padding: 7px 10px; outline: none; width: 100%; cursor: pointer;
+}
+.cfg-sel:focus { border-color: var(--accent); }
+
+.input-row { display: flex; gap: 8px; align-items: flex-end; }
+.input-wrap { flex: 1; position: relative; }
+textarea#userInput {
+  width: 100%; min-height: 54px; max-height: 120px;
+  resize: none; overflow-y: auto;
+  background: var(--bg3); color: var(--text);
+  border: 1px solid var(--line2); border-radius: var(--radius);
+  padding: 10px 12px; font-size: 13px; font-family: var(--sans);
+  line-height: 1.5; outline: none; transition: border-color .15s;
+}
+textarea#userInput:focus { border-color: var(--accent); }
+textarea#userInput::placeholder { color: var(--dim); }
+
+.send-btn {
+  display: flex; align-items: center; gap: 6px;
+  padding: 10px 18px; border-radius: var(--radius);
+  background: var(--accent); color: var(--bg); border: none;
+  font-size: 13px; font-weight: 500; font-family: var(--sans);
+  cursor: pointer; white-space: nowrap; transition: opacity .15s;
+}
+.send-btn:hover { opacity: .88; }
+.send-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ── Prompt preview bar ─────────────────────── */
+.prompt-bar {
+  font-size: 11px; color: var(--muted); font-family: var(--mono);
+  background: var(--bg3); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 6px 10px;
+  margin-bottom: 10px; line-height: 1.6;
+  display: none;
+}
+.prompt-bar.show { display: block; }
+.prompt-bar .plabel { color: var(--accent); margin-right: 6px; }
+
+/* ── Side panel ─────────────────────────────── */
+.side { background: var(--bg2); border-left: 1px solid var(--line); display: flex; flex-direction: column; overflow: hidden; }
+.side-tabs { display: flex; border-bottom: 1px solid var(--line); flex-shrink: 0; }
+.stab { flex: 1; padding: 10px 4px; font-size: 11px; color: var(--muted); text-align: center; cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent; margin-bottom: -1px; font-family: var(--sans); transition: all .15s; display: flex; align-items: center; justify-content: center; gap: 4px; }
+.stab:hover { color: var(--text); }
+.stab.on { color: var(--accent); border-bottom-color: var(--accent); }
+.side-body { flex: 1; overflow-y: auto; padding: 12px; }
+.side-body::-webkit-scrollbar { width: 4px; }
+.side-body::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 2px; }
+.panel { display: none; }
+.panel.on { display: block; }
+
+/* ── State tree ─────────────────────────────── */
+.sec { font-size: 10px; font-weight: 500; color: var(--dim); text-transform: uppercase; letter-spacing: .08em; margin: 14px 0 6px; }
+.sec:first-child { margin-top: 0; }
+
+.tree-node { display: flex; align-items: flex-start; gap: 7px; padding: 5px 6px; border-radius: var(--radius); cursor: pointer; transition: background .12s; }
+.tree-node:hover { background: var(--bg3); }
+.tree-node.current { background: var(--bluel); }
+.tree-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; border: 1.5px solid var(--dim); background: transparent; transition: all .15s; }
+.tree-dot.done { background: var(--green); border-color: var(--green); }
+.tree-dot.current { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 3px var(--acl); }
+.tree-dot.branch { border-color: var(--blue); }
+.tree-label { font-size: 12px; color: var(--text); line-height: 1.4; flex: 1; }
+.tree-meta { font-size: 10px; color: var(--muted); margin-top: 1px; font-family: var(--mono); }
+.tree-children { margin-left: 15px; padding-left: 8px; border-left: 1px solid var(--line); margin-top: 1px; }
+
+/* path tags */
+.path-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.ptag { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-family: var(--mono); border: 1px solid var(--line2); color: var(--muted); background: var(--bg3); }
+.ptag.new { border-color: rgba(200,169,110,.3); color: var(--accent); background: var(--acl); }
+
+/* ── History tab ────────────────────────────── */
+.hist-item { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.hist-item:last-child { border-bottom: none; }
+.hist-head { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+.hist-v { font-family: var(--mono); font-size: 11px; color: var(--accent); min-width: 32px; }
+.hist-text { font-size: 12px; color: var(--text); line-height: 1.4; flex: 1; }
+.hist-sel { font-size: 10px; color: var(--green); margin-top: 2px; }
+.hist-item.current .hist-text { color: var(--accent); }
+.hist-prompt-toggle { font-size: 10px; color: var(--muted); cursor: pointer; text-decoration: underline; margin-top: 2px; }
+.hist-prompt { font-size: 10px; color: var(--dim); font-family: var(--mono); margin-top: 4px; line-height: 1.5; display: none; }
+.hist-prompt.show { display: block; }
+
+/* ── Style tab ──────────────────────────────── */
+.style-row { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+.skey { font-size: 12px; color: var(--text); min-width: 64px; }
+.sbar-bg { flex: 1; height: 3px; border-radius: 2px; background: var(--bg4); overflow: hidden; }
+.sbar-fill { height: 100%; border-radius: 2px; transition: width .4s; }
+.sbar-pos { background: var(--green); }
+.sbar-neg { background: var(--red); }
+.sval { font-size: 10px; color: var(--muted); min-width: 28px; text-align: right; font-family: var(--mono); }
+
+.ref-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 4px; }
+.ref-item { aspect-ratio: 4/3; border-radius: var(--radius); background: var(--bg3); border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.ref-item img { width: 100%; height: 100%; object-fit: cover; }
+.ref-empty { font-size: 11px; color: var(--dim); text-align: center; padding: 16px 0; }
+.upload-ref-btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 7px; border-radius: var(--radius); border: 1px dashed var(--line2); background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; font-family: var(--sans); margin-top: 8px; transition: all .15s; }
+.upload-ref-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Picked tab ─────────────────────────────── */
+.picked-list { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.picked-item {
+  border: 1px solid var(--line);
+  background: var(--bg3);
+  border-radius: var(--radius);
+  padding: 6px;
+  cursor: pointer;
+  transition: border-color .12s, transform .12s;
+}
+.picked-item:hover { border-color: var(--line2); transform: translateY(-1px); }
+.picked-item.current { border-color: var(--accent); background: var(--acl); }
+.picked-thumb {
+  width: 100%;
+  aspect-ratio: 16/9;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  background: var(--bg2);
+}
+.picked-meta { margin-top: 6px; }
+.picked-node { font-size: 11px; color: var(--accent); font-family: var(--mono); }
+.picked-text { font-size: 11px; color: var(--text); line-height: 1.4; margin-top: 2px; }
+.picked-empty { font-size: 12px; color: var(--dim); padding: 6px 0; }
+
+@media (max-width: 980px) {
+  .workspace { grid-template-columns: 1fr; }
+  .side-resizer { display: none; }
+  .side { border-left: none; border-top: 1px solid var(--line); }
+}
+
+/* ── Toast ──────────────────────────────────── */
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--bg4); border: 1px solid var(--line2); border-radius: var(--radius); padding: 8px 16px; font-size: 12px; color: var(--text); z-index: 999; opacity: 0; transition: opacity .2s; pointer-events: none; white-space: nowrap; }
+.toast.show { opacity: 1; }
+
+/* ── Scrollbars ─────────────────────────────── */
+* { scrollbar-width: thin; scrollbar-color: var(--bg4) transparent; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="titlebar">
+    <span class="logo">ArchAI</span>
+    <span class="proj-name" id="projLabel">—</span>
+    <div class="tbar-right">
+      <button class="cfg-sel" style="width:auto;padding:5px 10px;font-size:11px" onclick="newProjectFromUI()">
+        新建项目
+      </button>
+      <button class="cfg-sel" style="width:auto;padding:5px 10px;font-size:11px" onclick="showProjectModal()">
+        切换项目
+      </button>
+      <button class="cfg-sel" style="width:auto;padding:5px 10px;font-size:11px" id="platformBtn" onclick="showPlatformModal()">
+        <span id="platformLabel">选择平台</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="workspace">
+    <!-- Main area -->
+    <div class="main">
+      <div class="topbar">
+        <div class="breadcrumb" id="breadcrumb">—</div>
+        <div class="n-btns">
+          <span class="n-lbl">张数</span>
+          <button class="nb" onclick="setN(this,1,'g1')">1</button>
+          <button class="nb" onclick="setN(this,2,'g2')">2</button>
+          <button class="nb on" onclick="setN(this,4,'g4')">4</button>
+          <button class="nb" onclick="setN(this,6,'g6')">6</button>
+        </div>
+      </div>
+
+      <div class="img-area">
+        <div class="img-grid g4" id="imgGrid">
+          <div style="grid-column:1/-1;text-align:center;padding:60px 0;color:var(--dim);font-size:13px">
+            输入你的设计需求，点击「生成」开始
+          </div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <div class="prompt-bar" id="promptBar">
+          <span class="plabel">Prompt →</span><span id="promptText"></span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:0 2px 8px 2px">
+          <div id="polishStatus" style="font-size:11px;color:var(--muted);display:none">
+            <span id="polishStatusText"></span>
+            <button style="margin-left:8px;padding:2px 6px;font-size:10px;background:var(--bg4);border:1px solid var(--line2);border-radius:4px;cursor:pointer;color:var(--text)" onclick="cancelPolish()">取消润色</button>
+            <button style="margin-left:4px;padding:2px 6px;font-size:10px;background:var(--bg4);border:1px solid var(--line2);border-radius:4px;cursor:pointer;color:var(--text)" onclick="rePolish()">重新润色</button>
+          </div>
+        </div>
+        <div class="input-row">
+          <div class="input-wrap">
+            <textarea id="userInput" placeholder="描述你的设计需求或改进方向…" rows="2"
+              onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();generate()}"></textarea>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <button id="polishBtn" onclick="polishPrompt()" style="padding:6px 14px;border-radius:var(--radius);background:var(--bg3);color:var(--muted);border:1px solid var(--line2);font-size:11px;cursor:pointer;white-space:nowrap;transition:all .15s">
+              <i class="ti ti-magic"></i> 润色
+            </button>
+            <button class="send-btn" id="sendBtn" onclick="generate()" style="padding:6px 14px">
+              <i class="ti ti-sparkles"></i> 生成
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-resizer" id="sideResizeHandle" title="拖拽调整右侧宽度"></div>
+
+    <!-- Side panel -->
+    <div class="side">
+      <div class="side-tabs">
+        <button class="stab on" onclick="switchTab(this,'tabTree')"><i class="ti ti-hierarchy-2"></i> 状态树</button>
+        <button class="stab" onclick="switchTab(this,'tabHist')"><i class="ti ti-clock"></i> 历史</button>
+        <button class="stab" onclick="switchTab(this,'tabPicked')"><i class="ti ti-photo-check"></i> 已选图</button>
+        <button class="stab" onclick="switchTab(this,'tabStyle')"><i class="ti ti-palette"></i> 风格</button>
+      </div>
+      <div class="side-body">
+        <div class="panel on" id="tabTree">
+          <div class="sec">设计路径</div>
+          <div id="treeContainer"></div>
+          <div class="sec" style="margin-top:16px">本次prompt关键词</div>
+          <div class="path-tags" id="pathTags"></div>
+        </div>
+        <div class="panel" id="tabHist">
+          <div class="sec">修改历史</div>
+          <div id="histContainer"></div>
+          <div class="sec" style="margin-top:14px">会话文件</div>
+          <div id="savePath" style="font-size:10px;color:var(--dim);font-family:var(--mono);word-break:break-all;line-height:1.6"></div>
+        </div>
+        <div class="panel" id="tabPicked">
+          <div class="sec">已选图片</div>
+          <div id="pickedContainer"></div>
+        </div>
+        <div class="panel" id="tabStyle">
+          <div class="sec">风格偏好（自动学习）</div>
+          <div id="styleContainer"></div>
+          <div class="sec" style="margin-top:14px">参考图</div>
+          <div class="ref-grid" id="refGrid"></div>
+          <button class="upload-ref-btn" onclick="document.getElementById('refUpload').click()"><i class="ti ti-plus"></i> 添加参考图</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Platform Modal -->
+<div id="platformModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;padding:24px;width:400px">
+    <div style="font-size:16px;font-weight:600;margin-bottom:16px;color:var(--text)">选择平台和模型</div>
+    <div class="cfg-grp" style="margin-bottom:12px">
+      <div class="cfg-lbl">图像平台</div>
+      <select class="cfg-sel" id="platformSelect" onchange="onPlatformChange()">
+        <option value="">加载中...</option>
+      </select>
+    </div>
+    <div class="cfg-grp" style="margin-bottom:12px">
+      <div class="cfg-lbl">图像模型</div>
+      <select class="cfg-sel" id="imageModelSelect">
+        <option value="">请先选择平台</option>
+      </select>
+    </div>
+    <div class="cfg-grp" style="margin-bottom:12px">
+      <div class="cfg-lbl">文本平台（提示词润色）</div>
+      <select class="cfg-sel" id="textPlatformSelect" onchange="onTextPlatformChange()">
+        <option value="">加载中...</option>
+      </select>
+    </div>
+    <div class="cfg-grp" style="margin-bottom:16px">
+      <div class="cfg-lbl">文本模型</div>
+      <select class="cfg-sel" id="textModelSelect">
+        <option value="">请先选择平台</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="cfg-sel" style="flex:1;cursor:pointer" onclick="hidePlatformModal()">取消</button>
+      <button class="send-btn" style="flex:1;justify-content:center" onclick="applyPlatform()">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- Project Modal -->
+<div id="projectModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;padding:18px;width:min(760px,92vw);max-height:80vh;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div style="font-size:16px;font-weight:600;color:var(--text)">切换项目（每个项目一棵树）</div>
+      <button class="cfg-sel" style="width:auto;padding:4px 8px;font-size:11px" onclick="loadProjectList()">刷新</button>
+    </div>
+    <div id="projectList" style="overflow:auto;display:grid;gap:8px;padding-right:2px"></div>
+    <div style="display:flex;gap:10px;margin-top:12px">
+      <button class="cfg-sel" style="flex:1;cursor:pointer" onclick="hideProjectModal()">关闭</button>
+      <button class="send-btn" style="flex:1;justify-content:center" onclick="newProjectFromUI(true)">新建并关闭</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="refUpload" accept="image/*" style="display:none" onchange="uploadRef(this)">
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ────────────────────────────────────
+let currentN = 4;
+let currentGridClass = 'g4';
+let selectedImageUrl = null;
+let platformsData = {};
+let currentPlatform = 'openai';
+let currentImageModel = 'gpt-image-1';
+let currentTextPlatform = 'deepseek';
+let currentTextModel = 'deepseek-chat';
+let sideWidth = parseInt(localStorage.getItem('archai_side_width') || '288', 10);
+
+// Persistence key
+const STATE_KEY = 'archai_session_path';
+
+// ── Init ──────────────────────────────────────
+async function init() {
+  // Load platforms
+  const platformsRes = await fetch('/api/platforms').catch(() => null);
+  if (platformsRes) {
+    platformsData = await platformsRes.json();
+    const platformEl = document.getElementById('platformSelect');
+    const textPlatformEl = document.getElementById('textPlatformSelect');
+    platformEl.innerHTML = Object.entries(platformsData).map(([k, v]) =>
+      `<option value="${k}">${v.name}</option>`
+    ).join('');
+    textPlatformEl.innerHTML = Object.entries(platformsData).map(([k, v]) =>
+      `<option value="${k}">${v.name}</option>`
+    ).join('');
+    onPlatformChange();
+    onTextPlatformChange();
+  }
+
+  // Load current config
+  const currentRes = await fetch('/api/current_platform').catch(() => null);
+  if (currentRes) {
+    const current = await currentRes.json();
+    currentPlatform = current.platform;
+    currentImageModel = current.image_model;
+    currentTextPlatform = current.text_platform || 'deepseek';
+    currentTextModel = current.text_model || 'deepseek-chat';
+    document.getElementById('platformSelect').value = currentPlatform;
+    document.getElementById('textPlatformSelect').value = currentTextPlatform;
+    onPlatformChange();
+    onTextPlatformChange();
+    if (currentImageModel) document.getElementById('imageModelSelect').value = currentImageModel;
+    if (currentTextModel) document.getElementById('textModelSelect').value = currentTextModel;
+    updatePlatformLabel();
+  }
+
+  if (!Number.isFinite(sideWidth)) sideWidth = 288;
+  applySideWidth(sideWidth);
+  initSideResize();
+
+  // Try to restore session from localStorage
+  const savedPath = localStorage.getItem(STATE_KEY);
+  if (savedPath) {
+    try {
+      await loadSession(savedPath, true);
+    } catch (e) {
+      console.log('Failed to restore session:', e);
+      localStorage.removeItem(STATE_KEY);
+      // Auto create new project
+      await autoCreateProject();
+    }
+  } else {
+    // Auto create new project
+    await autoCreateProject();
+  }
+}
+
+async function autoCreateProject() {
+  // Set platform first
+  const platform = document.getElementById('platformSelect').value;
+  const imageModel = document.getElementById('imageModelSelect').value;
+  await fetch('/api/set_platform', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({platform, image_model: imageModel})
+  });
+
+  // Create default project
+  const res = await fetch('/api/project/new', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({project_name: '建筑设计项目'})
+  });
+  if (res.ok) {
+    await refreshState();
+  }
+}
+
+function updatePlatformLabel() {
+  const imgName = platformsData[currentPlatform]?.name || currentPlatform;
+  const txtName = platformsData[currentTextPlatform]?.name || currentTextPlatform;
+  document.getElementById('platformLabel').textContent = `${imgName} · ${currentImageModel} | ${txtName} · ${currentTextModel}`;
+}
+
+function showPlatformModal() {
+  document.getElementById('platformModal').style.display = 'flex';
+}
+
+function hidePlatformModal() {
+  document.getElementById('platformModal').style.display = 'none';
+}
+
+function onPlatformChange() {
+  const platform = document.getElementById('platformSelect').value;
+  if (!platform || !platformsData[platform]) return;
+  const models = platformsData[platform].models;
+  const imageEl = document.getElementById('imageModelSelect');
+  const imageModels = models.image || [];
+  imageEl.innerHTML = imageModels.map(m => `<option value="${m}">${m}</option>`).join('');
+}
+
+function onTextPlatformChange() {
+  const platform = document.getElementById('textPlatformSelect').value;
+  if (!platform || !platformsData[platform]) return;
+  const models = platformsData[platform].models;
+  const textEl = document.getElementById('textModelSelect');
+  const textModels = models.text || [];
+  textEl.innerHTML = textModels.map(m => `<option value="${m}">${m}</option>`).join('');
+}
+
+async function applyPlatform() {
+  const platform = document.getElementById('platformSelect').value;
+  const imageModel = document.getElementById('imageModelSelect').value;
+  const textPlatform = document.getElementById('textPlatformSelect').value;
+  const textModel = document.getElementById('textModelSelect').value;
+  
+  await fetch('/api/set_platform', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      platform,
+      image_model: imageModel,
+      text_platform: textPlatform,
+      text_model: textModel
+    })
+  });
+  
+  currentPlatform = platform;
+  currentImageModel = imageModel;
+  currentTextPlatform = textPlatform;
+  currentTextModel = textModel;
+  updatePlatformLabel();
+  hidePlatformModal();
+  toast('平台已切换');
+}
+
+async function newProjectFromUI(closeAfter = false) {
+  const name = (window.prompt('请输入新项目名称', '建筑设计项目') || '').trim();
+  if (!name) return;
+
+  const res = await fetch('/api/project/new', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({project_name: name})
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    toast('新建项目失败: ' + (err.detail || res.status));
+    return;
+  }
+
+  await refreshState();
+  await loadProjectList();
+  if (closeAfter) hideProjectModal();
+  toast('项目已新建');
+}
+
+function showProjectModal() {
+  const modal = document.getElementById('projectModal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  loadProjectList();
+}
+
+function hideProjectModal() {
+  const modal = document.getElementById('projectModal');
+  if (!modal) return;
+  modal.style.display = 'none';
+}
+
+async function loadProjectList() {
+  const box = document.getElementById('projectList');
+  if (!box) return;
+  box.innerHTML = '<div style="font-size:12px;color:var(--dim);padding:8px">加载中...</div>';
+
+  const res = await fetch('/api/project/list').catch(() => null);
+  if (!res || !res.ok) {
+    box.innerHTML = '<div style="font-size:12px;color:var(--red);padding:8px">项目列表加载失败</div>';
+    return;
+  }
+
+  const items = await res.json();
+  if (!items.length) {
+    box.innerHTML = '<div style="font-size:12px;color:var(--dim);padding:8px">暂无项目</div>';
+    return;
+  }
+
+  box.innerHTML = items.map(p => `
+    <div class="hist-item" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg3)">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div style="min-width:0">
+          <div style="font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.project}</div>
+          <div style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-top:2px">${p.created} · ${p.nodes} 节点</div>
+        </div>
+        <button class="cfg-sel" style="width:auto;padding:4px 8px;font-size:11px" data-path="${p.path}">打开</button>
+      </div>
+    </div>
+  `).join('');
+
+  box.querySelectorAll('button[data-path]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const path = btn.getAttribute('data-path');
+      if (!path) return;
+      await loadSession(path);
+      hideProjectModal();
+    });
+  });
+}
+
+// ── Refresh state ─────────────────────────────
+let originalInput = '';  // 保存原始输入
+let polishedInput = '';  // 保存润色后的输入
+
+// ── Polish prompt ─────────────────────────────
+async function polishPrompt() {
+  const inputEl = document.getElementById('userInput');
+  const input = inputEl.value.trim();
+  if (!input) {
+    toast('请先输入描述');
+    return;
+  }
+
+  // 保存原始输入
+  originalInput = input;
+
+  const btn = document.getElementById('polishBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="ti ti-loader"></i> 润色中...';
+
+  try {
+    const res = await fetch('/api/polish_prompt', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({user_input: input})
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || '润色失败');
+    }
+
+    const data = await res.json();
+    polishedInput = data.polished_prompt;
+
+    // 显示润色结果
+    inputEl.value = polishedInput;
+
+    // 显示润色状态
+    const statusEl = document.getElementById('polishStatus');
+    const statusTextEl = document.getElementById('polishStatusText');
+    statusEl.style.display = 'block';
+    if (data.optimized === false) {
+      statusTextEl.textContent = '已使用路径记忆拼接（AI润色不可用）';
+      statusTextEl.style.color = 'var(--muted)';
+      if (data.warning) toast(data.warning);
+    } else {
+      statusTextEl.textContent = '已润色';
+      statusTextEl.style.color = 'var(--accent)';
+    }
+
+    toast('润色完成');
+  } catch (e) {
+    toast('润色失败: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-magic"></i> 润色';
+  }
+}
+
+function cancelPolish() {
+  const inputEl = document.getElementById('userInput');
+  inputEl.value = originalInput;
+  document.getElementById('polishStatus').style.display = 'none';
+  polishedInput = '';
+  toast('已取消润色');
+}
+
+async function rePolish() {
+  // 使用原始输入重新润色
+  const inputEl = document.getElementById('userInput');
+  inputEl.value = originalInput;
+  await polishPrompt();
+}
+
+function applySideWidth(width) {
+  const clamped = Math.max(240, Math.min(520, Math.round(width)));
+  sideWidth = clamped;
+  document.documentElement.style.setProperty('--side-width', `${clamped}px`);
+  localStorage.setItem('archai_side_width', String(clamped));
+}
+
+function initSideResize() {
+  const handle = document.getElementById('sideResizeHandle');
+  const workspace = document.querySelector('.workspace');
+  if (!handle || !workspace) return;
+
+  let dragging = false;
+  let startX = 0;
+  let startWidth = sideWidth;
+
+  const onMove = (e) => {
+    if (!dragging) return;
+    const dx = startX - e.clientX;
+    applySideWidth(startWidth + dx);
+  };
+
+  const onUp = () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.classList.remove('resizing');
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+  };
+
+  handle.addEventListener('mousedown', (e) => {
+    if (window.innerWidth <= 980) return;
+    e.preventDefault();
+    dragging = true;
+    startX = e.clientX;
+    startWidth = sideWidth;
+    document.body.classList.add('resizing');
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  });
+}
+
+async function switchToNode(nodeId) {
+  const res = await fetch('/api/switch_node', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({node_id: nodeId}),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    toast('切换节点失败: ' + (err.detail || res.status));
+    return;
+  }
+  await refreshState();
+}
+
+
+async function refreshState() {
+  const res = await fetch('/api/project/state');
+  if (!res.ok) return;
+  const s = await res.json();
+
+  document.getElementById('projLabel').textContent = s.project;
+  renderBreadcrumb(s);
+  renderTree(s.tree, document.getElementById('treeContainer'));
+  renderPathTags(s.path_tags);
+  renderHistory(s.history, s.save_path);
+  renderPicked(s.history);
+  renderStyle(s.style_summary, s.ref_images);
+  renderImages(s.current_images || [], s.current_selected || null);
+
+  if (s.current_prompt) {
+    document.getElementById('promptText').textContent = s.current_prompt;
+    document.getElementById('promptBar').classList.add('show');
+  } else {
+    document.getElementById('promptBar').classList.remove('show');
+  }
+  
+  // Save to localStorage
+  if (s.save_path) {
+    localStorage.setItem(STATE_KEY, s.save_path);
+  }
+}
+
+// ── Generate ──────────────────────────────────
+async function generate() {
+  const input = document.getElementById('userInput').value.trim();
+  if (!input) { toast('请输入设计需求'); return; }
+
+  const btn = document.getElementById('sendBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="ti ti-loader" style="animation:spin 1s linear infinite"></i> 生成中…';
+
+  // Show loading placeholders
+  showLoadingCards(currentN);
+  document.getElementById('promptBar').classList.remove('show');
+
+  try {
+    // 直接使用输入框内容，不再后端润色（用户已在前端润色）
+    const res = await fetch('/api/generate', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({user_input: input, n: currentN, optimize_prompt: false})
+    });
+
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-sparkles"></i> 生成';
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      toast('生成失败: ' + (err.detail || res.status));
+      await refreshState();
+      return;
+    }
+
+    await res.json();
+    document.getElementById('userInput').value = '';
+    document.getElementById('polishStatus').style.display = 'none';
+    selectedImageUrl = null;
+    originalInput = '';
+    polishedInput = '';
+
+    await refreshState();
+  } catch (e) {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-sparkles"></i> 生成';
+    toast('生成失败: ' + e.message);
+    await refreshState();
+  }
+}
+
+// ── Image rendering ───────────────────────────
+function showLoadingCards(n) {
+  const grid = document.getElementById('imgGrid');
+  grid.className = 'img-grid ' + currentGridClass;
+  grid.innerHTML = Array.from({length: n}, (_, i) => `
+    <div class="img-card loading">
+      <div class="img-placeholder">
+        <i class="ti ti-loader"></i>
+        <span>生成中 ${i+1}/${n}</span>
+      </div>
+    </div>`).join('');
+}
+
+function showEmptyGrid() {
+  document.getElementById('imgGrid').innerHTML = `
+    <div style="grid-column:1/-1;text-align:center;padding:60px 0;color:var(--dim);font-size:13px">
+      输入你的设计需求，点击「生成」开始
+    </div>`;
+}
+
+function renderImages(images, selectedUrl = null) {
+  const grid = document.getElementById('imgGrid');
+  if (!images || !images.length) {
+    showEmptyGrid();
+    return;
+  }
+  grid.className = 'img-grid ' + currentGridClass;
+  grid.innerHTML = images.map((img, i) => {
+    if (img.error || !img.url) return `
+      <div class="img-card">
+        <div class="img-placeholder">
+          <i class="ti ti-photo-off"></i>
+          <span class="gen-error">${img.error || '生成失败'}</span>
+        </div>
+      </div>`;
+    return `
+      <div class="img-card ${img.url === selectedUrl ? 'sel' : ''}" onclick="selectImage(this,'${img.url}')">
+        <img src="${img.url}" alt="图${i+1}" loading="lazy">
+      </div>`;
+  }).join('');
+}
+
+async function selectImage(el, url) {
+  // 如果点击的是已选中的图片，则取消选择
+  if (el.classList.contains('sel')) {
+    el.classList.remove('sel');
+    selectedImageUrl = null;
+    const res = await fetch('/api/select_image', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({image_url: ''})
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      toast('取消选图失败: ' + (err.detail || res.status));
+      await refreshState();
+      return;
+    }
+    await refreshState();
+    return;
+  }
+  
+  // 否则选择该图片
+  document.querySelectorAll('#imgGrid .img-card').forEach(c => c.classList.remove('sel'));
+  el.classList.add('sel');
+  selectedImageUrl = url;
+  const res = await fetch('/api/select_image', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({image_url: url})
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    toast('选图失败: ' + (err.detail || res.status));
+    await refreshState();
+    return;
+  }
+  await refreshState();
+}
+
+// ── Upload reference ──────────────────────────
+async function uploadRef(input) {
+  if (!input.files[0]) return;
+  const fd = new FormData(); fd.append('file', input.files[0]);
+  const res = await fetch('/api/upload_reference', {method:'POST', body: fd});
+  if (!res.ok) { toast('上传失败'); return; }
+  toast('参考图已添加');
+  await refreshState();
+  input.value = '';
+}
+
+// ── N selector ───────────────────────────────
+function setN(el, n, cls) {
+  document.querySelectorAll('.nb').forEach(b => b.classList.remove('on'));
+  el.classList.add('on');
+  currentN = n; currentGridClass = cls;
+  document.getElementById('imgGrid').className = 'img-grid ' + cls;
+}
+
+// ── Tab switcher ──────────────────────────────
+function switchTab(el, id) {
+  document.querySelectorAll('.stab').forEach(t => t.classList.remove('on'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('on'));
+  el.classList.add('on');
+  document.getElementById(id).classList.add('on');
+}
+
+// ── Render helpers ────────────────────────────
+function renderBreadcrumb(s) {
+  const path = [];
+  function walk(node) {
+    if (node.is_current) {
+      path.push(`<span class="bc-cur">${node.label}</span>`);
+      return true;
+    }
+    for (const child of node.children) {
+      if (walk(child)) {
+        path.unshift(`<span>${node.label}</span>`);
+        return true;
+      }
+    }
+    return false;
+  }
+  walk(s.tree);
+  document.getElementById('breadcrumb').innerHTML = path.join('<span class="bc-sep"> › </span>');
+}
+
+function renderTree(node, container, depth=0) {
+  if (depth === 0) container.innerHTML = '';
+  const wrap = document.createElement('div');
+
+  const tn = document.createElement('div');
+  tn.className = 'tree-node' + (node.is_current ? ' current' : '');
+  tn.onclick = () => {
+    switchToNode(node.id);
+  };
+
+  const dotClass = node.is_current ? 'current' : (node.selected ? 'done' : (depth > 1 ? 'branch' : ''));
+  tn.innerHTML = `
+    <div class="tree-dot ${dotClass}"></div>
+    <div>
+      <div class="tree-label">${node.label}</div>
+      <div class="tree-meta">${node.id} · ${node.images}张图${node.selected ? ' · 已选' : ''}</div>
+    </div>`;
+  wrap.appendChild(tn);
+
+  if (node.children && node.children.length) {
+    const ch = document.createElement('div');
+    ch.className = 'tree-children';
+    node.children.forEach(c => renderTree(c, ch, depth + 1));
+    wrap.appendChild(ch);
+  }
+
+  container.appendChild(wrap);
+}
+
+function renderPathTags(tags) {
+  document.getElementById('pathTags').innerHTML = tags.map(t =>
+    `<span class="ptag ${t.is_new ? 'new' : ''}">${t.text}</span>`
+  ).join('');
+}
+
+function renderHistory(history, savePath) {
+  document.getElementById('histContainer').innerHTML = history.map(h => `
+    <div class="hist-item ${h.is_current ? 'current' : ''}">
+      <div class="hist-head">
+        <span class="hist-v">${h.id}</span>
+        <span class="hist-text">${h.user_input}</span>
+      </div>
+      ${h.selected ? '<div class="hist-sel"><i class="ti ti-check" style="font-size:10px"></i> 已选中图片</div>' : ''}
+      ${h.prompt ? `<div class="hist-prompt-toggle" onclick="this.nextElementSibling.classList.toggle('show')">查看优化后 prompt ▾</div>
+        <div class="hist-prompt">${h.prompt}</div>` : ''}
+    </div>`).join('');
+  document.getElementById('savePath').textContent = savePath || '';
+}
+
+function renderPicked(history) {
+  const box = document.getElementById('pickedContainer');
+  if (!box) return;
+
+  const picked = (history || []).filter(h => h.selected_image && h.selected_image.url);
+  if (!picked.length) {
+    box.innerHTML = '<div class="picked-empty">暂无已选图片</div>';
+    return;
+  }
+
+  box.innerHTML = `<div class="picked-list">${picked.map(h => `
+    <div class="picked-item ${h.is_current ? 'current' : ''}" data-node-id="${h.id}">
+      <img class="picked-thumb" src="${h.selected_image.url}" alt="selected ${h.id}" loading="lazy">
+      <div class="picked-meta">
+        <div class="picked-node">${h.id}</div>
+        <div class="picked-text">${h.user_input || ''}</div>
+      </div>
+    </div>
+  `).join('')}</div>`;
+
+  box.querySelectorAll('.picked-item').forEach((el) => {
+    el.addEventListener('click', () => {
+      const nodeId = el.getAttribute('data-node-id');
+      if (nodeId) switchToNode(nodeId);
+    });
+  });
+}
+
+function renderStyle(styles, refImages) {
+  const sc = document.getElementById('styleContainer');
+  if (!styles.length) {
+    sc.innerHTML = '<div style="font-size:12px;color:var(--dim);padding:8px 0">选图后自动学习风格偏好</div>';
+  } else {
+    const max = Math.max(...styles.map(s => Math.abs(s.weight)), 0.1);
+    sc.innerHTML = styles.map(s => {
+      const pct = Math.round(Math.abs(s.weight) / max * 100);
+      const pos = s.weight >= 0;
+      return `<div class="style-row">
+        <span class="skey">${s.keyword}</span>
+        <div class="sbar-bg"><div class="sbar-fill ${pos ? 'sbar-pos' : 'sbar-neg'}" style="width:${pct}%"></div></div>
+        <span class="sval">${s.weight > 0 ? '+' : ''}${s.weight.toFixed(1)}</span>
+      </div>`;
+    }).join('');
+  }
+
+  const rg = document.getElementById('refGrid');
+  if (!refImages.length) {
+    rg.innerHTML = '<div class="ref-empty" style="grid-column:1/-1">暂无参考图</div>';
+  } else {
+    rg.innerHTML = refImages.map(r =>
+      `<div class="ref-item"><img src="${r.path}" alt="${r.label}" title="${r.label}"></div>`
+    ).join('');
+  }
+}
+
+// ── Load session ──────────────────────────────
+async function loadSession(path, silent = false) {
+  const fd = new FormData();
+  fd.append('path', path);
+  const res = await fetch('/api/project/load', {method:'POST', body: fd});
+  if (!res.ok) { 
+    if (!silent) toast('加载失败'); 
+    throw new Error('加载失败');
+  }
+  await refreshState();
+  if (!silent) toast('项目已加载');
+}
+
+// ── Toast ─────────────────────────────────────
+let _toastTimer = null;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ── Init ──────────────────────────────────────
+init();
+</script>
+</body>
+</html>
