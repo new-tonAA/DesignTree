@@ -29,7 +29,7 @@ PLATFORMS: Dict[str, Dict[str, Any]] = {
     "openai": {
         "name": "OpenAI",
         "base_url": "https://api.openai.com",
-        "api_key": "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",
+        "api_key": "",
         "models": {
             "image": ["gpt-image-1", "gpt-image-1.5", "gpt-image-2", "gpt-image-1-mini"],
             "text": ["gpt-4o", "gpt-4-turbo", "gpt-4o-mini"],
@@ -39,7 +39,7 @@ PLATFORMS: Dict[str, Dict[str, Any]] = {
     "openrouter": {
         "name": "OpenRouter",
         "base_url": "https://openrouter.ai/api",
-        "api_key": "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",
+        "api_key": "",
         "models": {
             "image": [
                 "openai/gpt-5-image-mini",
@@ -55,7 +55,7 @@ PLATFORMS: Dict[str, Dict[str, Any]] = {
     "v3": {
         "name": "V3.CM",
         "base_url": "https://api.v3.cm",
-        "api_key": "sk-byNbcxPlyWXrZnU43b7cDa3e4a1449958b24622dC328D955",
+        "api_key": "",
         "models": {
             "image": [
                 "gpt-image-1",
@@ -87,7 +87,7 @@ PLATFORMS: Dict[str, Dict[str, Any]] = {
     "volcengine": {
         "name": "火山引擎",
         "base_url": "https://ark.cn-beijing.volces.com/api/v3",
-        "api_key": "ark-bfc41aa0-5b92-4f84-9692-aaab1f823126-93e25",
+        "api_key": "",
         "models": {
             "image": [
                 "doubao-seedream-4-0-250828",
@@ -101,7 +101,7 @@ PLATFORMS: Dict[str, Dict[str, Any]] = {
     "deepseek": {
         "name": "DeepSeek",
         "base_url": "https://api.deepseek.com",
-        "api_key": "sk-612908087c0d44c48afcb1b84746b179",  # 用户需要自己填入 API Key
+        "api_key": "",
         "models": {
             "image": [],  # DeepSeek 不支持图像生成
             "text": ["deepseek-chat", "deepseek-coder"]
@@ -164,24 +164,24 @@ def _normalize_image_model(platform: str, image_model: Optional[str]) -> Optiona
     return mapped
 
 
-def set_platform(platform: str, image_model: Optional[str] = None, text_model: Optional[str] = None, text_platform: Optional[str] = None):
+def set_platform(platform: Optional[str] = None, image_model: Optional[str] = None, text_model: Optional[str] = None, text_platform: Optional[str] = None):
     """设置当前使用的平台和模型"""
     global _current_platform, _current_image_model, _current_text_platform, _current_text_model
-    if platform not in PLATFORMS:
-        raise ValueError(f"不支持的平台: {platform}")
     
-    _current_platform = platform
-    config = PLATFORMS[platform]
+    # 图像平台设置
+    if platform:
+        if platform not in PLATFORMS:
+            raise ValueError(f"不支持的平台: {platform}")
+        _current_platform = platform
+        config = PLATFORMS[platform]
+        
+        if image_model:
+            normalized_model = _normalize_image_model(platform, image_model)
+            if normalized_model not in config["models"].get("image", []):
+                raise ValueError(f"平台 {platform} 不支持图像模型: {normalized_model}")
+            _current_image_model = normalized_model
     
-    if image_model:
-        normalized_model = _normalize_image_model(platform, image_model)
-        if normalized_model not in config["models"].get("image", []):
-            raise ValueError(f"平台 {platform} 不支持图像模型: {image_model}")
-        _current_image_model = normalized_model
-    elif config["models"].get("image"):
-        _current_image_model = config["models"]["image"][0]
-    
-    # 文本模型可以独立选择平台
+    # 文本平台设置（独立）
     if text_platform:
         if text_platform not in PLATFORMS:
             raise ValueError(f"不支持的文本平台: {text_platform}")
@@ -557,10 +557,13 @@ def generate_images(
     size: str = "1792x1024",
     quality: str = "standard",
     save_dir: Optional[Path] = None,
+    on_image_ready: Optional[callable] = None,
 ) -> list:
     """
     调用图像API生成图片，支持多平台。
     返回 [{url, local_path, revised_prompt}, ...]
+    
+    on_image_ready: 可选回调函数，每张图片生成后立即调用 (image_dict) -> None
     """
     global _current_image_model
 
@@ -628,11 +631,20 @@ def generate_images(
             else:
                 raise RuntimeError("未知的图像返回格式")
 
-            results.append({
+            img_dict = {
                 "url": f"/static/uploads/{filename}",
                 "local_path": str(local_path),
                 "revised_prompt": item.get("revised_prompt", prompt),
-            })
+            }
+            results.append(img_dict)
+            
+            # 每张图片生成后立即回调
+            if on_image_ready:
+                try:
+                    on_image_ready(img_dict)
+                except Exception as e:
+                    print(f"[warn] on_image_ready callback failed: {e}")
+                    
         except Exception as e:
             results.append({"url": None, "local_path": None, "error": str(e)})
 

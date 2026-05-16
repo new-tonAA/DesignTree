@@ -252,10 +252,18 @@ def generate(req: GenerateReq):
 
     sm.set_node_prompt(s, node_id, prompt)
 
+    # 逐张生成图片，每张生成后立即保存
+    def on_image_ready(img_dict):
+        """每张图片生成后立即保存到session"""
+        if img_dict.get("url"):
+            sm.add_images(s, node_id, [img_dict])
+    
     images = agent.generate_images(
         prompt, n=req.n,
         save_dir=Path(__file__).parent / "static" / "uploads",
+        on_image_ready=on_image_ready,
     )
+    
     ok_images = [
         img for img in images
         if isinstance(img, dict) and img.get("url")
@@ -270,9 +278,7 @@ def generate(req: GenerateReq):
         )
         raise HTTPException(502, f"本次生成失败：{first_error}")
 
-    sm.add_images(s, node_id, images)
-
-    # 清除生成中标记
+    # 图片已在回调中逐张保存，这里只做最终保存
     s["nodes"][node_id]["generating"] = False
     sm._save(s)
 
@@ -378,7 +384,7 @@ def save_key(req: SaveKeyReq):
 # ── 平台选择 ───────────────────────────────
 
 class SetPlatformReq(BaseModel):
-    platform: str
+    platform: Optional[str] = None
     image_model: Optional[str] = None
     text_model: Optional[str] = None
     text_platform: Optional[str] = None  # 独立的文本平台
