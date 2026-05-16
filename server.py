@@ -145,9 +145,11 @@ def get_state():
     cur = s["nodes"][s["current_node"]]
     current_selected_urls = sm.get_node_selected_urls(s)
     current_attachments = sm.get_node_attachments(s)
+    current_path_node_ids = [n["id"] for n in sm.get_path_to_root(s)]
     return {
         "project":       s["project"],
         "current_node":  s["current_node"],
+        "current_path_node_ids": current_path_node_ids,
         "tree":          sm.get_tree_for_ui(s),
         "style_summary": sm.get_style_summary(s),
         "style_candidates": sm.get_style_candidates(s),
@@ -202,6 +204,7 @@ def generate(req: GenerateReq):
     s = _require_session()
     if req.parent_node_id and req.parent_node_id not in s["nodes"]:
         raise HTTPException(400, f"节点 {req.parent_node_id} 不存在")
+    base_node_id = req.parent_node_id or s["current_node"]
 
     # 先创建节点（确保刷新后不丢失）
     try:
@@ -216,9 +219,21 @@ def generate(req: GenerateReq):
         sm.add_attachments(s, node_id, attachments)
 
     try:
-        context = sm.build_context_for_agent(s, req.user_input, req.parent_node_id)
+        # 严格路径记忆：只取 root -> base_node_id（父指针链，不按节点编号顺序）
+        context = sm.build_context_for_agent(s, req.user_input, base_node_id)
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+    # 将“当前新节点”上传图也加入本次上下文（同级分支不参与）
+    path_attachments = list(context.get("path_attachments") or [])
+    for att in attachments:
+        if isinstance(att, dict) and att.get("url"):
+            path_attachments.append({
+                "node_id": node_id,
+                "url": att.get("url"),
+                "name": att.get("name", ""),
+            })
+    context["path_attachments"] = path_attachments
     
     # 添加模型记忆到context
     if req.model_memory:
@@ -266,6 +281,7 @@ def generate(req: GenerateReq):
         "optimized_prompt": prompt,
         "prompt_optimized": req.optimize_prompt,
         "prompt_warning": prompt_warning,
+        "context_path_node_ids": context.get("path_node_ids", []),
         "attachments": attachments,
         "images": s["nodes"][node_id]["images"],
     }
@@ -392,18 +408,21 @@ class SetApiKeysReq(BaseModel):
     openrouter: Optional[str] = None
     v3: Optional[str] = None
     deepseek: Optional[str] = None
+    volcengine: Optional[str] = None
 
 @app.post("/api/set_api_keys")
 def set_api_keys(req: SetApiKeysReq):
     """设置API Keys，覆盖默认值"""
     if req.openai:
-        agent.PLATFORMS["openai"]["api_key"] = req.openai
+        agent.PLATFORMS["openai"]["api_key"] = agent._sanitize_api_key(req.openai)
     if req.openrouter:
-        agent.PLATFORMS["openrouter"]["api_key"] = req.openrouter
+        agent.PLATFORMS["openrouter"]["api_key"] = agent._sanitize_api_key(req.openrouter)
     if req.v3:
-        agent.PLATFORMS["v3"]["api_key"] = req.v3
+        agent.PLATFORMS["v3"]["api_key"] = agent._sanitize_api_key(req.v3)
     if req.deepseek:
-        agent.PLATFORMS["deepseek"]["api_key"] = req.deepseek
+        agent.PLATFORMS["deepseek"]["api_key"] = agent._sanitize_api_key(req.deepseek)
+    if req.volcengine:
+        agent.PLATFORMS["volcengine"]["api_key"] = agent._sanitize_api_key(req.volcengine)
     return {"ok": True}
 
 

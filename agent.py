@@ -206,12 +206,39 @@ def get_current_config() -> Dict[str, str]:
 
 def _get_api_key() -> str:
     """获取当前图像平台的API Key"""
-    return PLATFORMS[_current_platform]["api_key"]
+    return _sanitize_api_key(PLATFORMS[_current_platform].get("api_key", ""))
 
 
 def _get_text_api_key() -> str:
     """获取当前文本平台的API Key"""
-    return PLATFORMS[_current_text_platform]["api_key"]
+    return _sanitize_api_key(PLATFORMS[_current_text_platform].get("api_key", ""))
+
+
+def _sanitize_api_key(raw: str) -> str:
+    """
+    清洗 API Key，避免“看起来有效但被判无效令牌”的常见输入问题：
+    - 复制了 `Bearer xxx`
+    - 包含换行/空格/零宽字符
+    - 外层多了一对引号
+    """
+    s = str(raw or "")
+    s = s.replace("\u00A0", " ").replace("\u200b", "").replace("\u200c", "").replace("\u200d", "").replace("\ufeff", "")
+    s = s.strip()
+    if s.lower().startswith("bearer "):
+        s = s.split(" ", 1)[1].strip()
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in {"'", '"', "`"}:
+        s = s[1:-1].strip()
+    s = re.sub(r"\s+", "", s)
+    return s
+
+
+def _mask_api_key(key: str) -> str:
+    s = _sanitize_api_key(key)
+    if not s:
+        return "<empty>"
+    if len(s) <= 10:
+        return s[:2] + "***"
+    return f"{s[:6]}...{s[-4:]}"
 
 
 # ─────────────────────────────────────────────
@@ -249,6 +276,7 @@ def prompt_agent(context: dict) -> str:
     history_text = _format_history(context["history"])
     weights_text = _format_weights(context["style_weights"])
     selected_text = _format_selected_images(context.get("selected_images", []))
+    path_attachments_text = _format_path_attachments(context.get("path_attachments", []))
     model_memory = context.get("model_memory", "")
     memory_text = f"\n模型记忆（永久附加）：{model_memory}" if model_memory else ""
 
@@ -256,6 +284,7 @@ def prompt_agent(context: dict) -> str:
         f"项目：{context['project_name']}\n\n"
         f"设计迭代路径（root → 当前）：\n{history_text}\n\n"
         f"路径上的已选图片记忆：\n{selected_text}\n\n"
+        f"路径上的用户上传参考图：\n{path_attachments_text}\n\n"
         f"本次新需求：{context['new_user_input']}\n\n"
         f"设计师风格偏好：{weights_text}{memory_text}\n\n"
         f"硬约束：不得改变“本次新需求”的语义方向，只能做清晰化与可视化细节补充。"
@@ -300,6 +329,7 @@ def compose_prompt_from_context(context: dict) -> str:
     """
     history = context.get("history", []) or []
     selected_images = context.get("selected_images", []) or []
+    path_attachments = context.get("path_attachments", []) or []
     style_weights = context.get("style_weights", {}) or {}
     new_user_input = (context.get("new_user_input") or "").strip()
     model_memory = (context.get("model_memory") or "").strip()
@@ -318,6 +348,11 @@ def compose_prompt_from_context(context: dict) -> str:
         [x.get("revised_prompt", "").strip() for x in selected_images if x.get("revised_prompt")],
         max_items=4,
         similarity_threshold=0.78,
+    )
+    attachment_hints = _dedup_text_items(
+        [_attachment_hint(x) for x in path_attachments if _attachment_hint(x)],
+        max_items=6,
+        similarity_threshold=0.9,
     )
 
     preferred_styles = [
@@ -339,6 +374,8 @@ def compose_prompt_from_context(context: dict) -> str:
         parts.append("Established visual decisions: " + " | ".join(memory_prompts) + ".")
     if selected_revised:
         parts.append("Selected image references to preserve: " + " | ".join(selected_revised) + ".")
+    if attachment_hints:
+        parts.append("User-uploaded references on current path: " + " | ".join(attachment_hints) + ".")
     if preferred_styles:
         parts.append("Preferred style cues: " + ", ".join(preferred_styles) + ".")
     if avoided_styles:
@@ -386,6 +423,31 @@ def _format_selected_images(selected_images: list) -> str:
         if url:
             lines.append(f"      → image_url: {url}")
     return "\n".join(lines)
+
+
+def _format_path_attachments(path_attachments: list) -> str:
+    if not path_attachments:
+        return "  （路径上暂无用户上传参考图）"
+
+    lines = []
+    for i, att in enumerate(path_attachments[-12:]):
+        node_id = att.get("node_id", "?")
+        hint = _attachment_hint(att)
+        lines.append(f"  [{i}] 节点 {node_id}: {hint}")
+    return "\n".join(lines)
+
+
+def _attachment_hint(att: dict) -> str:
+    name = str((att or {}).get("name") or "").strip()
+    if name:
+        return _clean_text_piece(name)
+    url = str((att or {}).get("url") or "").strip()
+    if not url:
+        return ""
+    tail = url.rsplit("/", 1)[-1]
+    tail = re.sub(r"\.[a-zA-Z0-9]+$", "", tail)
+    tail = tail.replace("_", " ").replace("-", " ").strip()
+    return _clean_text_piece(tail)
 
 
 def _format_weights(weights: dict) -> str:
@@ -862,6 +924,7 @@ def _platform_post(path: str, payload: dict, api_key: str, platform: str, header
     config = PLATFORMS[platform]
     base_url = config["base_url"]
     
+    api_key = _sanitize_api_key(api_key)
     if headers is None:
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -875,5 +938,9 @@ def _platform_post(path: str, payload: dict, api_key: str, platform: str, header
             json=payload,
         )
     if not (200 <= resp.status_code < 300):
+        if resp.status_code == 401:
+            raise RuntimeError(
+                f"{platform} 401: {resp.text[:400]} (key={_mask_api_key(api_key)})"
+            )
         raise RuntimeError(f"{platform} {resp.status_code}: {resp.text[:400]}")
     return resp.json()

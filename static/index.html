@@ -516,6 +516,7 @@ textarea#userInput::placeholder { color: var(--dim); }
 .tree-node { display: flex; align-items: flex-start; gap: 7px; padding: 5px 6px; border-radius: var(--radius); cursor: pointer; transition: background .12s; }
 .tree-node:hover { background: var(--bg3); }
 .tree-node.current { background: var(--bluel); }
+.tree-node.on-path .tree-label { font-weight: 600; }
 .tree-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; border: 1.5px solid var(--dim); background: transparent; transition: all .15s; cursor: pointer; }
 .tree-dot.done { background: var(--green); border-color: var(--green); }
 .tree-dot.current { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 3px var(--acl); }
@@ -542,6 +543,8 @@ textarea#userInput::placeholder { color: var(--dim); }
 .hist-item { padding: 8px 6px; border-bottom: 1px solid var(--line); border-radius: 4px; transition: background .15s; }
 .hist-item:hover { background: var(--bg3); }
 .hist-item:last-child { border-bottom: none; }
+.hist-item.on-path:not(.current) { background: var(--acl); }
+.hist-item.on-path .hist-text { color: var(--accent); font-weight: 600; }
 .hist-head { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
 .hist-v { font-family: var(--mono); font-size: 11px; color: var(--accent); min-width: 32px; }
 .hist-text { font-size: 12px; color: var(--text); line-height: 1.4; flex: 1; }
@@ -1058,6 +1061,7 @@ let currentN = 4;
 let currentGridClass = 'g4';
 let selectedImageUrls = new Set();
 let currentNodeImageUrlSet = new Set();
+let currentPathNodeIdSet = new Set();
 let platformsData = {};
 let currentPlatform = 'v3';
 let currentImageModel = 'gpt-image-1';
@@ -1088,6 +1092,18 @@ function normalizeImageModelAlias(model) {
     dalle3: 'dall-e-3',
   };
   return alias[key] || m;
+}
+
+function normalizeApiKey(key) {
+  let s = String(key || '')
+    .replace(/\u00A0/g, ' ')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .trim();
+  if (/^bearer\s+/i.test(s)) s = s.replace(/^bearer\s+/i, '').trim();
+  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'")) || (s.startsWith('`') && s.endsWith('`'))) {
+    s = s.slice(1, -1).trim();
+  }
+  return s.replace(/\s+/g, '');
 }
 
 // Save config to localStorage
@@ -2016,6 +2032,7 @@ async function refreshState() {
   }
 
   renderBreadcrumb(s);
+  currentPathNodeIdSet = new Set(s.current_path_node_ids || []);
   renderTree(s.tree, document.getElementById('treeContainer'));
   renderPathTags(s.path_tags);
   currentNodeImageUrlSet = new Set(
@@ -2325,7 +2342,10 @@ function renderTree(node, container, depth=0) {
   const wrap = document.createElement('div');
 
   const tn = document.createElement('div');
-  tn.className = 'tree-node' + (node.is_current ? ' current' : '');
+  const inPath = currentPathNodeIdSet.has(node.id);
+  tn.className = 'tree-node'
+    + (inPath ? ' on-path' : '')
+    + (node.is_current ? ' current' : '');
   tn.setAttribute('data-id', node.id);
   tn.onclick = () => {
     switchToNode(node.id);
@@ -2388,7 +2408,7 @@ function renderTreeAttachedImages(images, selectedUrls = []) {
 
 function renderHistory(history, savePath) {
   document.getElementById('histContainer').innerHTML = history.map(h => `
-    <div class="hist-item ${h.is_current ? 'current' : ''}" data-node-id="${h.id}" onclick="switchToNode('${h.id}')" style="cursor:pointer">
+    <div class="hist-item ${currentPathNodeIdSet.has(h.id) ? 'on-path' : ''} ${h.is_current ? 'current' : ''}" data-node-id="${h.id}" onclick="switchToNode('${h.id}')" style="cursor:pointer">
       <div class="hist-head">
         <span class="hist-v">${h.id}</span>
         <span class="hist-text">${h.user_input}</span>
@@ -2657,11 +2677,11 @@ function setTheme(theme) {
 async function saveSettings() {
   // 保存API keys到localStorage
   const keys = {
-    openai: document.getElementById('keyOpenAI').value.trim(),
-    openrouter: document.getElementById('keyOpenRouter').value.trim(),
-    v3: document.getElementById('keyV3').value.trim(),
-    deepseek: document.getElementById('keyDeepSeek').value.trim(),
-    volcengine: document.getElementById('keyVolcengine').value.trim(),
+    openai: normalizeApiKey(document.getElementById('keyOpenAI').value),
+    openrouter: normalizeApiKey(document.getElementById('keyOpenRouter').value),
+    v3: normalizeApiKey(document.getElementById('keyV3').value),
+    deepseek: normalizeApiKey(document.getElementById('keyDeepSeek').value),
+    volcengine: normalizeApiKey(document.getElementById('keyVolcengine').value),
   };
   localStorage.setItem('archai_api_keys', JSON.stringify(keys));
   

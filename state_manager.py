@@ -284,6 +284,7 @@ def build_context_for_agent(session: dict, new_user_input: str, node_id: Optiona
     path_style_weights = _build_path_style_weights(path)
 
     return {
+        "path_node_ids": [n.get("id") for n in path if isinstance(n, dict)],
         "history":         history_steps,        # root→current的完整历史
         "new_user_input":  new_user_input,        # 用户本次输入
         "style_weights":   path_style_weights,
@@ -463,7 +464,7 @@ def apply_style_selection(session: dict, candidate_keywords: list[str], selected
 
 def get_style_summary(session: dict, top_n: int = 6) -> list[dict]:
     """按绝对权重返回风格偏好摘要（包含“要”和“不要”）。"""
-    weights = session.get("style_weights", {})
+    weights = _get_current_path_style_weights(session)
     sorted_kw = sorted(weights.items(), key=lambda x: abs(x[1]), reverse=True)
     out = []
     for k, v in sorted_kw:
@@ -484,7 +485,7 @@ def get_style_candidates(session: dict, top_n: int = 14) -> list[dict]:
     返回可供用户勾选的风格候选词：
     综合当前路径文本命中 + 已学习权重。
     """
-    weights = session.get("style_weights", {})
+    weights = _get_current_path_style_weights(session)
     path = get_path_to_root(session)
 
     score_map: dict[str, float] = {}
@@ -521,6 +522,11 @@ def get_style_candidates(session: dict, top_n: int = 14) -> list[dict]:
         "weight": round(float(weights.get(kw, 0.0)), 2),
         "state": "prefer" if weights.get(kw, 0.0) > EPS else ("avoid" if weights.get(kw, 0.0) < -EPS else "neutral"),
     } for kw in candidates]
+
+
+def _get_current_path_style_weights(session: dict) -> dict:
+    path = get_path_to_root(session)
+    return _build_path_style_weights(path)
 
 
 def _decay_style_weights(weights: dict, factor: float = STYLE_DECAY_FACTOR) -> None:
