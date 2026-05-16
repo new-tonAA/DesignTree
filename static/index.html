@@ -219,17 +219,16 @@ textarea#userInput::placeholder { color: var(--dim); }
 .prompt-images {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 6px;
 }
 .prompt-image-item {
   position: relative;
-  width: 64px;
-  height: 64px;
+  width: 56px;
+  height: 56px;
   border-radius: 6px;
   overflow: hidden;
   border: 1px solid var(--line2);
-  background: var(--bg3);
+  background: var(--bg4);
 }
 .prompt-image-item img {
   width: 100%;
@@ -240,13 +239,13 @@ textarea#userInput::placeholder { color: var(--dim); }
   position: absolute;
   top: 2px;
   right: 2px;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: rgba(0,0,0,0.6);
   border: none;
   color: #fff;
-  font-size: 10px;
+  font-size: 9px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -650,8 +649,15 @@ textarea#userInput::placeholder { color: var(--dim); }
       <div class="footer">
         <div class="footer-content">
           <div class="input-row composer-main" style="flex-direction:column">
-            <!-- 工具栏移到上方 -->
-            <div class="footer-toolbar" style="margin-bottom:6px">
+            <!-- 输入框容器（图片在内部） -->
+            <div class="input-wrap composer-input" style="width:100%;position:relative">
+              <!-- 图片预览区在输入框内部上方 -->
+              <div id="promptImagesPreview" class="prompt-images" style="display:none;position:absolute;top:8px;left:8px;right:8px;z-index:1"></div>
+              <textarea id="userInput" placeholder="描述你的设计需求或改进方向…（可拖入图片）" rows="2"
+                onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();generate()}"></textarea>
+            </div>
+            <!-- 工具栏在下方 -->
+            <div class="footer-toolbar">
               <div class="toolbar-left">
                 <button id="uploadBtn" class="toolbar-btn" onclick="document.getElementById('promptImageUpload').click()">
                   📷 图片
@@ -671,13 +677,6 @@ textarea#userInput::placeholder { color: var(--dim); }
               <button class="send-btn toolbar-btn" id="sendBtn" onclick="generate()">
                 生成
               </button>
-            </div>
-            <!-- 图片预览区 -->
-            <div id="promptImagesPreview" class="prompt-images" style="display:none"></div>
-            <!-- 输入框（支持拖拽） -->
-            <div class="input-wrap composer-input" style="width:100%">
-              <textarea id="userInput" placeholder="描述你的设计需求或改进方向…（可拖入图片）" rows="2"
-                onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();generate()}"></textarea>
             </div>
             <input type="file" id="promptImageUpload" accept="image/*" multiple style="display:none" onchange="handlePromptImages(this)">
           </div>
@@ -1602,9 +1601,11 @@ function handlePromptImageFiles(files) {
 
 function renderPromptImages() {
   const container = document.getElementById('promptImagesPreview');
+  const textarea = document.getElementById('userInput');
   if (!promptImages.length) {
     container.style.display = 'none';
     container.innerHTML = '';
+    textarea.style.paddingTop = '12px';
     return;
   }
   container.style.display = 'flex';
@@ -1614,6 +1615,9 @@ function renderPromptImages() {
       <button class="prompt-image-remove" onclick="removePromptImage(${i})">✕</button>
     </div>
   `).join('');
+  // 动态调整 textarea 的 padding-top
+  const containerHeight = container.offsetHeight + 8;
+  textarea.style.paddingTop = containerHeight + 'px';
 }
 
 function removePromptImage(index) {
