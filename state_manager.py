@@ -241,11 +241,14 @@ def build_context_for_agent(session: dict, new_user_input: str, node_id: Optiona
     """
     为Agent准备完整上下文，供其生成优化后的图像prompt。
     返回dict，直接作为LLM的system+user消息素材。
+    注意：只包含从当前节点到root的路径上的内容，不混入其他分支。
     """
     path = get_path_to_root(session, node_id)
 
     history_steps = []
     selected_images = []
+    path_attachments = []  # 路径上所有节点的附带图片
+
     for node in path:
         _ensure_node_selection(node)
         selected_imgs = _get_selected_images(node)
@@ -266,6 +269,16 @@ def build_context_for_agent(session: dict, new_user_input: str, node_id: Optiona
                 "local_path": selected_img.get("local_path"),
                 "revised_prompt": selected_img.get("revised_prompt"),
             })
+        # 收集路径上节点的附带图片
+        node_attachments = node.get("attachments", [])
+        if isinstance(node_attachments, list):
+            for att in node_attachments:
+                if isinstance(att, dict) and att.get("url"):
+                    path_attachments.append({
+                        "node_id": node["id"],
+                        "url": att.get("url"),
+                        "name": att.get("name", ""),
+                    })
 
     # 传给模型的风格偏好严格限定为 root→current 路径，不混入其他分支
     path_style_weights = _build_path_style_weights(path)
@@ -276,6 +289,7 @@ def build_context_for_agent(session: dict, new_user_input: str, node_id: Optiona
         "style_weights":   path_style_weights,
         "reference_images": [r["path"] for r in session["reference_images"]],
         "selected_images": selected_images,
+        "path_attachments": path_attachments,  # 路径上的附带图片
         "project_name":    session["project"],
     }
 

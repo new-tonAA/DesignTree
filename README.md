@@ -1,19 +1,30 @@
-# ArchAgent — AI-Powered Architectural Design Studio
+<div align="center">
 
-An AI image generation tool designed for architectural design, featuring design state tree management, multi-platform model switching, and style preference learning.
+# 🌳 DesignTree
+
+**AI-Powered Architectural Design Studio**
+
+An intelligent image generation tool for architectural design with visual design tree management
+
+[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com/)
+
+</div>
+
+---
 
 ![Interface Preview](Readme_image/msedge_vrMMkT4GSY.jpg)
 
 ## Features
 
-- **Design State Tree**: Visualize design iteration paths with support for rollback, branching, and node switching
-- **Multi-Platform Support**: OpenAI, OpenRouter, V3.CM, Volcengine, DeepSeek
-- **Multiple Model Selection**: gpt-image-1 / gpt-image-1.5 / gpt-image-2, BananaPro, Gemini and more
-- **Style Preference Learning**: Automatically learn style preferences from selected images, intelligently recommend style tags
-- **Reference Image Upload**: Drag-and-drop support for reference images, submitted together with prompts
-- **Voice Input**: Real-time speech-to-text, automatically appended to input
-- **Theme Switching**: Dark, Light, Midnight, Dusk themes
-- **State Persistence**: Input, style selection, and tab state preserved after page refresh
+- **🌳 Visual Design Tree** - Visualize design iteration paths with rollback, branching, and node switching
+- **🔄 Multi-Platform Support** - OpenAI, OpenRouter, V3.CM, Volcengine, DeepSeek
+- **🎨 Multiple Models** - gptimage2, gpt-image-1, BananaPro, Gemini and more
+- **🧠 Style Learning** - Automatically learn style preferences from selected images
+- **📤 Reference Images** - Drag-and-drop upload, submitted together with prompts
+- **🎤 Voice Input** - Real-time speech-to-text with auto-append
+- **🎨 Theme Switching** - Dark, Light, Midnight, Dusk themes
+- **💾 State Persistence** - Input, style selection, and tab state preserved after refresh
 
 ## Quick Start
 
@@ -43,20 +54,48 @@ Open http://localhost:8000, click the "Settings" button in the top right corner,
 
 ---
 
+## How It Works
+
+### Design Tree Logic
+
+```
+root (initial requirement)
+ └── v1 (first modification + selected image)
+      ├── v2 (continue iteration)  ← current
+      └── v1b (branch after rollback)
+```
+
+**Core Principle**: 
+- When generating images at a leaf node, the prompt = all inputs from **root → current node path** + selected images
+- Content from other branches is **NEVER** mixed in
+- Only the path matters, not sibling nodes
+
+### What's Included in Context
+
+| Source | Included? | Notes |
+|--------|-----------|-------|
+| Path: root → current | ✅ Yes | All user inputs and prompts |
+| Selected images on path | ✅ Yes | Images chosen at each node |
+| Uploaded images on path | ✅ Yes | Reference images attached to nodes |
+| Sibling nodes (v7, v8, v9) | ❌ No | Completely isolated |
+| Other branches | ❌ No | No cross-branch contamination |
+
+---
+
 ## User Guide
 
 ### Design Workflow
 
-1. Enter your architectural design requirements (e.g., "Modern commercial building, glass curtain wall, natural lighting")
+1. Enter your architectural design requirements
 2. Select the number of images to generate (1/2/4)
-3. Click the "Generate" button and wait for images
+3. Click "Generate" and wait for images
 4. Click on an image to select your preferred design
-5. Continue entering modification requests to iterate based on selected images
+5. Continue entering modifications to iterate
 
 ### State Tree Panel
 
 The left panel displays the design iteration path:
-- **Design Path**: Visual tree structure, click nodes to navigate history
+- **Design Path**: Visual tree structure, click nodes to navigate
 - **Prompt Keywords**: Keyword tags for the current path
 - **Attached Images**: Reference images uploaded for the current node
 
@@ -67,20 +106,14 @@ The system automatically learns style preferences:
 - Selection applies automatically (with debounce)
 - Unselected styles will be downweighted
 
-### Selected Images
-
-The bottom right section shows all selected images:
-- Click the magnifier to view full-size
-- Selected images serve as reference for the next generation
-
 ---
 
 ## File Structure
 
 ```
-ArchAgent/
-├── state_manager.py   # Design state tree (core logic)
-├── agent.py           # AI calls: prompt optimization / image generation / speech-to-text
+DesignTree/
+├── state_manager.py   # Design tree core logic
+├── agent.py           # AI calls: prompt optimization / image generation
 ├── server.py          # FastAPI backend
 ├── requirements.txt   # Python dependencies
 ├── config.json        # API keys (auto-generated)
@@ -91,22 +124,11 @@ ArchAgent/
 └── Readme_image/      # README screenshots
 ```
 
-## State Tree Logic
-
-```
-root (initial requirement)
- └── v1 (first modification + selected image)
-      └── v2 (continue iteration)  ← current
-      └── v1b (branch after rollback)
-```
-
-**Core Principle**: When generating images at a leaf node, prompt = all inputs from root to current node path + selected images. Content from other branches is never mixed in.
-
 ## Supported Platforms and Models
 
 | Platform | Image Models | Text Models |
 |----------|--------------|-------------|
-| V3.CM | gpt-image-1, gpt-image-1.5, gpt-image-2, qwen-image, gemini-* | gpt-4o-mini |
+| V3.CM | gptimage2, gptimage3 | gpt-4o-mini |
 | OpenAI | gpt-image-1, gpt-image-2 | gpt-4o |
 | OpenRouter | BananaPro, Gemini | Claude, Gemini |
 | Volcengine | volcengine-image | - |
@@ -117,7 +139,7 @@ root (initial requirement)
 | Function | API |
 |----------|-----|
 | Prompt Optimization | GPT-4o-mini / DeepSeek |
-| Image Generation | gpt-image-* / OpenAI Image API |
+| Image Generation | gptimage2 / OpenAI DALL-E |
 | Speech-to-Text | Whisper-1 |
 
 ## Tech Stack
@@ -128,4 +150,10 @@ root (initial requirement)
 
 ---
 
+<div align="center">
+
 Made with ❤️ for architects
+
+**DesignTree** - Grow your designs like a tree 🌳
+
+</div>
