@@ -650,12 +650,8 @@ textarea#userInput::placeholder { color: var(--dim); }
       <div class="footer">
         <div class="footer-content">
           <div class="input-row composer-main" style="flex-direction:column">
-            <div id="promptImagesPreview" class="prompt-images" style="display:none"></div>
-            <div class="input-wrap composer-input" style="width:100%">
-              <textarea id="userInput" placeholder="描述你的设计需求或改进方向…" rows="2"
-                onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();generate()}"></textarea>
-            </div>
-            <div class="footer-toolbar">
+            <!-- 工具栏移到上方 -->
+            <div class="footer-toolbar" style="margin-bottom:6px">
               <div class="toolbar-left">
                 <button id="uploadBtn" class="toolbar-btn" onclick="document.getElementById('promptImageUpload').click()">
                   📷 图片
@@ -675,6 +671,13 @@ textarea#userInput::placeholder { color: var(--dim); }
               <button class="send-btn toolbar-btn" id="sendBtn" onclick="generate()">
                 生成
               </button>
+            </div>
+            <!-- 图片预览区 -->
+            <div id="promptImagesPreview" class="prompt-images" style="display:none"></div>
+            <!-- 输入框（支持拖拽） -->
+            <div class="input-wrap composer-input" style="width:100%">
+              <textarea id="userInput" placeholder="描述你的设计需求或改进方向…（可拖入图片）" rows="2"
+                onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();generate()}"></textarea>
             </div>
             <input type="file" id="promptImageUpload" accept="image/*" multiple style="display:none" onchange="handlePromptImages(this)">
           </div>
@@ -1036,12 +1039,18 @@ async function init() {
 
   // Load saved input
   loadInput();
-  
+
   // Load model memory
   loadModelMemory();
 
+  // Load prompt images
+  loadPromptImages();
+
   // Auto-save input on change
   document.getElementById('userInput').addEventListener('input', saveInput);
+
+  // Init drag & drop for images
+  initDragDrop();
 
   // Try to restore session from localStorage
   const savedPath = localStorage.getItem(STATE_KEY);
@@ -1537,7 +1546,24 @@ async function startVoiceInput() {
 }
 
 // ── Prompt images ─────────────────────────────
+const PROMPT_IMAGES_KEY = 'archai_prompt_images';
 let promptImages = [];
+
+function loadPromptImages() {
+  const saved = localStorage.getItem(PROMPT_IMAGES_KEY);
+  if (saved) {
+    try {
+      promptImages = JSON.parse(saved);
+      renderPromptImages();
+    } catch (e) {
+      promptImages = [];
+    }
+  }
+}
+
+function savePromptImages() {
+  localStorage.setItem(PROMPT_IMAGES_KEY, JSON.stringify(promptImages));
+}
 
 function handlePromptImages(input) {
   const files = Array.from(input.files);
@@ -1551,10 +1577,27 @@ function handlePromptImages(input) {
         data: e.target.result
       });
       renderPromptImages();
+      savePromptImages();
     };
     reader.readAsDataURL(file);
   });
   input.value = '';
+}
+
+function handlePromptImageFiles(files) {
+  Array.from(files).forEach(file => {
+    if (!file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      promptImages.push({
+        name: file.name,
+        data: e.target.result
+      });
+      renderPromptImages();
+      savePromptImages();
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 function renderPromptImages() {
@@ -1576,6 +1619,50 @@ function renderPromptImages() {
 function removePromptImage(index) {
   promptImages.splice(index, 1);
   renderPromptImages();
+  savePromptImages();
+}
+
+function clearPromptImages() {
+  promptImages = [];
+  renderPromptImages();
+  localStorage.removeItem(PROMPT_IMAGES_KEY);
+}
+
+// 拖拽支持
+function initDragDrop() {
+  const textarea = document.getElementById('userInput');
+  const footer = document.querySelector('.footer');
+
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    textarea.addEventListener(eventName, preventDefaults, false);
+    footer.addEventListener(eventName, preventDefaults, false);
+  });
+
+  function preventDefaults(e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  ['dragenter', 'dragover'].forEach(eventName => {
+    textarea.addEventListener(eventName, () => {
+      textarea.style.borderColor = 'var(--accent)';
+      textarea.style.background = 'var(--acl)';
+    }, false);
+  });
+
+  ['dragleave', 'drop'].forEach(eventName => {
+    textarea.addEventListener(eventName, () => {
+      textarea.style.borderColor = 'var(--line2)';
+      textarea.style.background = 'var(--bg3)';
+    }, false);
+  });
+
+  textarea.addEventListener('drop', (e) => {
+    const files = e.dataTransfer.files;
+    if (files.length) {
+      handlePromptImageFiles(files);
+    }
+  }, false);
 }
 
 function initSideResize() {
@@ -1755,8 +1842,7 @@ async function generate() {
     polishedInput = '';
     localStorage.removeItem(INPUT_KEY);
     // 清除已上传的图片
-    promptImages = [];
-    renderPromptImages();
+    clearPromptImages();
 
     await refreshState();
   } catch (e) {
