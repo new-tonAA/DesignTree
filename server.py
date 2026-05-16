@@ -619,13 +619,27 @@ if __name__ == "__main__":
     import webbrowser
     import threading
     import time
+    import socket
+
+    def find_available_port(start_port=8000, max_attempts=10):
+        """查找可用端口"""
+        for port in range(start_port, start_port + max_attempts):
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.bind(("0.0.0.0", port))
+                    return port
+            except OSError:
+                continue
+        return start_port + max_attempts
+
+    port = find_available_port()
 
     def open_browser():
         time.sleep(1.5)  # 等待服务器启动
-        webbrowser.open("http://localhost:8000")
+        webbrowser.open(f"http://localhost:{port}")
 
     # 启动后自动打开浏览器
     threading.Thread(target=open_browser, daemon=True).start()
 
-    print("\n  ArchAI Design Studio → http://localhost:8000\n")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    print(f"\n  ArchAI Design Studio → http://localhost:{port}\n")
+    uvicorn.run(app, host="0.0.0.0", port=port)
