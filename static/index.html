@@ -410,7 +410,7 @@ textarea#userInput::placeholder { color: var(--dim); }
           <button class="nb" onclick="setN(this,1,'g1')">1</button>
           <button class="nb" onclick="setN(this,2,'g2')">2</button>
           <button class="nb on" onclick="setN(this,4,'g4')">4</button>
-          <button class="nb" onclick="showCustomN()">自定义</button>
+          <button class="nb" id="customNBtn" onclick="showCustomN()">更多</button>
         </div>
       </div>
 
@@ -1445,9 +1445,11 @@ function showCustomN() {
     currentN = n;
     currentGridClass = cls;
     
-    // 高亮自定义按钮
+    // 高亮自定义按钮，并更新按钮文本为数字
     document.querySelectorAll('.nb').forEach(b => b.classList.remove('on'));
-    document.querySelectorAll('.nb')[3].classList.add('on');
+    const customBtn = document.getElementById('customNBtn');
+    customBtn.classList.add('on');
+    customBtn.textContent = n;
     
     document.getElementById('imgGrid').className = 'img-grid ' + cls;
     toast(`已设置为 ${n} 张`);
