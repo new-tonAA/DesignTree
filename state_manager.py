@@ -29,12 +29,23 @@ import json
 import uuid
 import os
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 
-SESSIONS_DIR = Path(__file__).parent / "sessions"
+def get_app_dir() -> Path:
+    """获取应用程序所在目录（兼容开发环境和打包后）"""
+    if getattr(sys, 'frozen', False):
+        # PyInstaller打包后
+        return Path(sys.executable).parent
+    else:
+        # 开发环境
+        return Path(__file__).parent
+
+
+SESSIONS_DIR = get_app_dir() / "sessions"
 SESSIONS_DIR.mkdir(exist_ok=True)
 
 

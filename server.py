@@ -27,14 +27,67 @@ import agent
 
 app = FastAPI(title="ArchAI Design Studio")
 
-STATIC_DIR = Path(__file__).parent / "static"
+# 获取exe所在目录（兼容开发环境和打包后）
+def get_app_dir() -> Path:
+    """获取应用程序所在目录"""
+    import sys
+    if getattr(sys, 'frozen', False):
+        # PyInstaller打包后
+        return Path(sys.executable).parent
+    else:
+        # 开发环境
+        return Path(__file__).parent
+
+APP_DIR = get_app_dir()
+STATIC_DIR = APP_DIR / "static"
 STATIC_DIR.mkdir(exist_ok=True)
 (STATIC_DIR / "uploads").mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+CONFIG_FILE = APP_DIR / "config.json"
+
 # 内存单会话（桌面应用场景足够）
 _session: dict = {}
 _last_session_path: str = ""  # 记录上次加载的路径
+
+
+def load_config():
+    """加载配置文件"""
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+    return {}
+
+
+def save_config(config: dict):
+    """保存配置文件"""
+    with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2, ensure_ascii=False)
+
+
+def load_api_keys_from_config():
+    """从配置文件加载API keys"""
+    config = load_config()
+    keys = config.get('api_keys', {})
+    if keys:
+        if keys.get('openai'):
+            agent.PLATFORMS["openai"]["api_key"] = agent._sanitize_api_key(keys['openai'])
+        if keys.get('openrouter'):
+            agent.PLATFORMS["openrouter"]["api_key"] = agent._sanitize_api_key(keys['openrouter'])
+        if keys.get('v3'):
+            agent.PLATFORMS["v3"]["api_key"] = agent._sanitize_api_key(keys['v3'])
+        if keys.get('deepseek'):
+            agent.PLATFORMS["deepseek"]["api_key"] = agent._sanitize_api_key(keys['deepseek'])
+        if keys.get('volcengine'):
+            agent.PLATFORMS["volcengine"]["api_key"] = agent._sanitize_api_key(keys['volcengine'])
+        print(f"[info] Loaded API keys from config: {CONFIG_FILE}")
+
+
+# 启动时加载配置
+load_api_keys_from_config()
 
 
 def _auto_load_latest_session():
@@ -419,17 +472,30 @@ class SetApiKeysReq(BaseModel):
 
 @app.post("/api/set_api_keys")
 def set_api_keys(req: SetApiKeysReq):
-    """设置API Keys，覆盖默认值"""
+    """设置API Keys，覆盖默认值并保存到配置文件"""
+    keys = {}
     if req.openai:
         agent.PLATFORMS["openai"]["api_key"] = agent._sanitize_api_key(req.openai)
+        keys["openai"] = req.openai
     if req.openrouter:
         agent.PLATFORMS["openrouter"]["api_key"] = agent._sanitize_api_key(req.openrouter)
+        keys["openrouter"] = req.openrouter
     if req.v3:
         agent.PLATFORMS["v3"]["api_key"] = agent._sanitize_api_key(req.v3)
+        keys["v3"] = req.v3
     if req.deepseek:
         agent.PLATFORMS["deepseek"]["api_key"] = agent._sanitize_api_key(req.deepseek)
+        keys["deepseek"] = req.deepseek
     if req.volcengine:
         agent.PLATFORMS["volcengine"]["api_key"] = agent._sanitize_api_key(req.volcengine)
+        keys["volcengine"] = req.volcengine
+    
+    # 保存到配置文件
+    config = load_config()
+    config['api_keys'] = keys
+    save_config(config)
+    print(f"[info] Saved API keys to config: {CONFIG_FILE}")
+    
     return {"ok": True}
 
 
