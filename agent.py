@@ -269,7 +269,7 @@ def prompt_agent(context: dict) -> str:
     返回优化后的英文图像prompt字符串。
     使用独立的文本平台（如 DeepSeek）来润色提示词。
     """
-    api_key = _get_text_api_key()
+    api_key = _sanitize_api_key(_get_text_api_key())
     text_platform = _current_text_platform
     config = PLATFORMS[text_platform]
 
@@ -324,8 +324,8 @@ def prompt_agent(context: dict) -> str:
 
 def compose_prompt_from_context(context: dict) -> str:
     """
-    不调用LLM时的兜底提示词拼接：
-    把 root->当前路径 的设计记忆 + 已选图记忆 + 本次新需求拼成可直接出图的英文prompt。
+    简洁的提示词拼接：
+    只收集用户输入历史，不重复完整prompt（因为prompt本身已包含历史）。
     """
     history = context.get("history", []) or []
     selected_images = context.get("selected_images", []) or []
@@ -334,21 +334,17 @@ def compose_prompt_from_context(context: dict) -> str:
     new_user_input = (context.get("new_user_input") or "").strip()
     model_memory = (context.get("model_memory") or "").strip()
 
+    # 只收集用户输入，不收集完整prompt（避免重复）
     memory_inputs = _dedup_text_items(
         [h.get("user_input", "").strip() for h in history if h.get("user_input")],
         max_items=6,
         similarity_threshold=0.82,
     )
-    memory_prompts = _dedup_text_items(
-        [h.get("prompt_used", "").strip() for h in history if h.get("prompt_used")],
-        max_items=4,
-        similarity_threshold=0.78,
-    )
-    selected_revised = _dedup_text_items(
-        [x.get("revised_prompt", "").strip() for x in selected_images if x.get("revised_prompt")],
-        max_items=4,
-        similarity_threshold=0.78,
-    )
+
+    # 不使用 selected_revised（它们包含完整历史导致重复）
+    # 只标记是否有参考图
+    has_selected = len(selected_images) > 0
+
     attachment_hints = _dedup_text_items(
         [_attachment_hint(x) for x in path_attachments if _attachment_hint(x)],
         max_items=6,
@@ -358,36 +354,29 @@ def compose_prompt_from_context(context: dict) -> str:
     preferred_styles = [
         k for k, v in sorted(style_weights.items(), key=lambda x: x[1], reverse=True)
         if v >= 0.3
-    ][:6]
+    ][:4]
     avoided_styles = [
         k for k, v in sorted(style_weights.items(), key=lambda x: x[1])
         if v <= -0.3
-    ][:6]
+    ][:4]
 
     parts = []
-    # 模型记忆优先添加
     if model_memory:
-        parts.append("Model memory (always applied): " + model_memory + ".")
+        parts.append(model_memory)
     if memory_inputs:
-        parts.append("Design evolution memory from previous nodes: " + " | ".join(memory_inputs) + ".")
-    if memory_prompts:
-        parts.append("Established visual decisions: " + " | ".join(memory_prompts) + ".")
-    if selected_revised:
-        parts.append("Selected image references to preserve: " + " | ".join(selected_revised) + ".")
+        parts.append("History: " + " | ".join(memory_inputs) + ".")
+    if has_selected:
+        parts.append("Refine based on selected images.")
     if attachment_hints:
-        parts.append("User-uploaded references on current path: " + " | ".join(attachment_hints) + ".")
+        parts.append("Refs: " + " | ".join(attachment_hints) + ".")
     if preferred_styles:
-        parts.append("Preferred style cues: " + ", ".join(preferred_styles) + ".")
+        parts.append("Style: " + ", ".join(preferred_styles) + ".")
     if avoided_styles:
-        parts.append("Avoid these style cues: " + ", ".join(avoided_styles) + ".")
+        parts.append("Avoid: " + ", ".join(avoided_styles) + ".")
     if new_user_input:
-        parts.append("Primary user request (must remain unchanged): " + new_user_input + ".")
+        parts.append(new_user_input)
 
-    parts.append(
-        "Keep architectural consistency while refining details, and never contradict the primary user request. "
-        "Include clear viewpoint, lighting, materials, surroundings, "
-        "photorealistic architectural visualization, 8k, professional rendering."
-    )
+    parts.append("Architectural visualization, photorealistic, 8k.")
     return " ".join(parts).strip()
 
 
@@ -567,7 +556,7 @@ def generate_images(
     """
     global _current_image_model
 
-    api_key  = _get_api_key()
+    api_key  = _sanitize_api_key(_get_api_key())
     platform = _current_platform
     save_dir = save_dir or (Path(__file__).parent / "static" / "uploads")
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -942,6 +931,9 @@ def _platform_post(path: str, payload: dict, api_key: str, platform: str, header
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
+    else:
+        # 确保 Authorization header 使用清理后的 api_key
+        headers["Authorization"] = f"Bearer {api_key}"
     
     with httpx.Client(timeout=120) as client:
         resp = client.post(

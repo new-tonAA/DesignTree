@@ -1221,6 +1221,25 @@ async function init() {
     updatePlatformLabel();
   }
 
+  // Auto-sync API keys from localStorage to backend
+  const savedKeys = localStorage.getItem('archai_api_keys');
+  if (savedKeys) {
+    try {
+      const keys = JSON.parse(savedKeys);
+      await fetch('/api/set_api_keys', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          openai: normalizeApiKey(keys.openai || ''),
+          openrouter: normalizeApiKey(keys.openrouter || ''),
+          v3: normalizeApiKey(keys.v3 || ''),
+          deepseek: normalizeApiKey(keys.deepseek || ''),
+          volcengine: normalizeApiKey(keys.volcengine || ''),
+        })
+      });
+    } catch (e) {}
+  }
+
   if (!Number.isFinite(sideWidth)) sideWidth = 288;
   applySideWidth(sideWidth);
   initSideResize();
@@ -2106,6 +2125,29 @@ async function refreshState() {
   // Save to localStorage
   if (s.save_path) {
     localStorage.setItem(STATE_KEY, s.save_path);
+  }
+
+  // 恢复生成按钮状态（如果当前节点正在生成）
+  const btn = document.getElementById('sendBtn');
+  if (s.generating && !isGenerating) {
+    isGenerating = true;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ti ti-loader" style="animation:spin 1s linear infinite"></i> 生成中…';
+    // 重启轮询
+    if (!pollingInterval) {
+      pollingInterval = setInterval(async () => {
+        await refreshState();
+      }, 2000);
+    }
+  } else if (!s.generating && isGenerating) {
+    // 生成完成，恢复按钮
+    isGenerating = false;
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-sparkles"></i> 生成';
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
+      pollingInterval = null;
+    }
   }
 }
 

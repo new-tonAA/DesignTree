@@ -163,6 +163,7 @@ def get_state():
         "current_selecteds": current_selected_urls,
         "current_attached_images": current_attachments,  # legacy alias
         "current_attachments": current_attachments,
+        "generating":    cur.get("generating", False),
     }
 
 
