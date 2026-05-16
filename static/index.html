@@ -39,7 +39,6 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .app { display: grid; grid-template-rows: 44px 1fr; height: 100vh; }
 .titlebar { display: flex; align-items: center; gap: 10px; padding: 0 16px; background: var(--bg2); border-bottom: 1px solid var(--line); user-select: none; }
 .logo { font-family: var(--serif); font-size: 17px; color: var(--accent); letter-spacing: 0.02em; }
-.proj-name { font-size: 12px; color: var(--muted); font-family: var(--mono); margin-left: 8px; }
 .tbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 
 .workspace { display: grid; grid-template-columns: minmax(0, 1fr) 6px var(--side-width); overflow: hidden; }
@@ -55,9 +54,11 @@ body.resizing { cursor: col-resize; user-select: none; }
 /* ── Main (left) ────────────────────────────── */
 .main { display: flex; flex-direction: column; background: var(--bg); overflow: hidden; }
 .topbar { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--bg2); flex-shrink: 0; }
-.breadcrumb { display: flex; align-items: center; gap: 5px; font-family: var(--mono); font-size: 11px; color: var(--muted); }
-.bc-sep { color: var(--dim); }
-.bc-cur { color: var(--accent); }
+.breadcrumb { display: flex; align-items: center; gap: 4px; font-family: var(--mono); font-size: 11px; color: var(--muted); overflow: hidden; white-space: nowrap; }
+.bc-sep { color: var(--dim); flex-shrink: 0; }
+.bc-item { cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: all .15s; overflow: hidden; text-overflow: ellipsis; max-width: 180px; white-space: nowrap; }
+.bc-item:hover { background: var(--bg3); color: var(--text); }
+.bc-cur { color: var(--accent); font-weight: 500; }
 .n-btns { display: flex; gap: 3px; margin-left: auto; align-items: center; }
 .n-lbl { font-size: 11px; color: var(--muted); margin-right: 4px; }
 .nb { width: 26px; height: 22px; border-radius: 4px; border: 1px solid var(--line2); background: transparent; color: var(--muted); font-size: 11px; cursor: pointer; font-family: var(--mono); transition: all .15s; }
@@ -92,6 +93,17 @@ body.resizing { cursor: col-resize; user-select: none; }
   font-size: 10px; padding: 2px 8px; border-radius: 99px; font-family: var(--sans);
 }
 .img-card img { width: 100%; height: 100%; object-fit: cover; border-radius: calc(var(--radius) - 1px); }
+.img-zoom-btn {
+  position: absolute; bottom: 8px; right: 8px;
+  width: 32px; height: 32px;
+  background: rgba(0,0,0,.6); border: none; border-radius: 8px;
+  color: #fff; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity .2s, transform .15s;
+  font-size: 16px;
+}
+.img-card:hover .img-zoom-btn { opacity: 1; }
+.img-zoom-btn:hover { background: rgba(0,0,0,.8); transform: scale(1.1); }
 .img-placeholder { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .img-placeholder i { font-size: 28px; color: var(--dim); }
 .img-placeholder span { font-size: 11px; color: var(--dim); font-family: var(--mono); }
@@ -101,7 +113,41 @@ body.resizing { cursor: col-resize; user-select: none; }
 .gen-error { font-size: 11px; color: var(--red); padding: 4px 8px; background: rgba(192,96,96,.1); border-radius: 4px; border: 1px solid rgba(192,96,96,.2); }
 
 /* ── Footer / Input ─────────────────────────── */
-.footer { flex-shrink: 0; padding: 10px 14px; border-top: 1px solid var(--line); background: var(--bg2); }
+.footer { flex-shrink: 0; border-top: 1px solid var(--line); background: var(--bg2); position: relative; display: flex; flex-direction: column; }
+.footer-resizer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: transparent;
+  cursor: ns-resize;
+  z-index: 10;
+}
+.footer-resizer:hover { background: var(--bg4); }
+.footer-resizer::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 30px;
+  height: 2px;
+  background: var(--line2);
+  border-radius: 1px;
+  opacity: 0;
+  transition: opacity .15s;
+}
+.footer-resizer:hover::after { opacity: 1; }
+
+.footer-content {
+  padding: 2px 14px 10px 14px;  /* 上边距进一步减少 */
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;  /* 内容固定在底部 */
+  height: 100%;
+  gap: 8px;  /* 各元素间距固定 */
+}
 
 .cfg-row { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; align-items: center; }
 .cfg-grp { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 120px; }
@@ -113,21 +159,43 @@ body.resizing { cursor: col-resize; user-select: none; }
 }
 .cfg-sel:focus { border-color: var(--accent); }
 
-.input-row { display: flex; gap: 8px; align-items: flex-end; }
+.input-row { display: flex; gap: 10px; align-items: stretch; }
 .input-wrap { flex: 1; position: relative; }
 textarea#userInput {
-  width: 100%; min-height: 54px; max-height: 120px;
+  width: 100%; height: 72px; min-height: 48px; max-height: 350px;
   resize: none; overflow-y: auto;
   background: var(--bg3); color: var(--text);
   border: 1px solid var(--line2); border-radius: var(--radius);
   padding: 10px 12px; font-size: 13px; font-family: var(--sans);
   line-height: 1.5; outline: none; transition: border-color .15s;
+  flex-shrink: 0;  /* textarea高度固定，不随flex压缩 */
 }
 textarea#userInput:focus { border-color: var(--accent); }
 textarea#userInput::placeholder { color: var(--dim); }
 
+/* ── Model memory textarea ───────────────────── */
+.model-memory-area {
+  width: 100%;
+  min-height: 60px;
+  max-height: 150px;
+  resize: vertical;
+  overflow-y: auto;
+  background: var(--bg3);
+  color: var(--text);
+  border: 1px solid var(--line2);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  font-size: 12px;
+  font-family: var(--sans);
+  line-height: 1.5;
+  outline: none;
+  transition: border-color .15s;
+}
+.model-memory-area:focus { border-color: var(--accent); }
+.model-memory-area::placeholder { color: var(--dim); }
+
 .send-btn {
-  display: flex; align-items: center; gap: 6px;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
   padding: 10px 18px; border-radius: var(--radius);
   background: var(--accent); color: var(--bg); border: none;
   font-size: 13px; font-weight: 500; font-family: var(--sans);
@@ -136,16 +204,73 @@ textarea#userInput::placeholder { color: var(--dim); }
 .send-btn:hover { opacity: .88; }
 .send-btn:disabled { opacity: .4; cursor: not-allowed; }
 
+.composer-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 24px;
+}
+.composer-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+.composer-input { min-width: 0; }
+.composer-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 112px;
+}
+.mini-btn {
+  padding: 3px 8px;
+  font-size: 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line2);
+  background: var(--bg4);
+  color: var(--text);
+  cursor: pointer;
+  line-height: 1.2;
+}
+.mini-btn:hover { border-color: var(--accent); color: var(--accent); }
+.mini-btn.ghost {
+  background: transparent;
+  color: var(--muted);
+}
+.polish-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+#polishBtn {
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  background: var(--bg3);
+  color: var(--muted);
+  border: 1px solid var(--line2);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all .15s;
+}
+#polishBtn:hover { border-color: var(--accent); color: var(--accent); }
+#sendBtn { padding: 8px 14px; }
+
 /* ── Prompt preview bar ─────────────────────── */
 .prompt-bar {
   font-size: 11px; color: var(--muted); font-family: var(--mono);
   background: var(--bg3); border: 1px solid var(--line);
   border-radius: var(--radius); padding: 6px 10px;
   margin-bottom: 10px; line-height: 1.6;
-  display: none;
+  display: none; align-items: flex-start; gap: 6px;
 }
-.prompt-bar.show { display: block; }
-.prompt-bar .plabel { color: var(--accent); margin-right: 6px; }
+.prompt-bar .plabel { color: var(--accent); white-space: nowrap; }
+.prompt-bar #promptText { flex: 1; word-break: break-word; }
 
 /* ── Side panel ─────────────────────────────── */
 .side { background: var(--bg2); border-left: 1px solid var(--line); display: flex; flex-direction: column; overflow: hidden; }
@@ -180,7 +305,8 @@ textarea#userInput::placeholder { color: var(--dim); }
 .ptag.new { border-color: rgba(200,169,110,.3); color: var(--accent); background: var(--acl); }
 
 /* ── History tab ────────────────────────────── */
-.hist-item { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.hist-item { padding: 8px 6px; border-bottom: 1px solid var(--line); border-radius: 4px; transition: background .15s; }
+.hist-item:hover { background: var(--bg3); }
 .hist-item:last-child { border-bottom: none; }
 .hist-head { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
 .hist-v { font-family: var(--mono); font-size: 11px; color: var(--accent); min-width: 32px; }
@@ -236,6 +362,16 @@ textarea#userInput::placeholder { color: var(--dim); }
   .workspace { grid-template-columns: 1fr; }
   .side-resizer { display: none; }
   .side { border-left: none; border-top: 1px solid var(--line); }
+  .composer-main {
+    grid-template-columns: 1fr;
+  }
+  .composer-actions {
+    flex-direction: row;
+    min-width: 0;
+  }
+  .composer-actions > button {
+    flex: 1;
+  }
 }
 
 /* ── Toast ──────────────────────────────────── */
@@ -251,16 +387,15 @@ textarea#userInput::placeholder { color: var(--dim); }
 <div class="app">
   <div class="titlebar">
     <span class="logo">ArchAI</span>
-    <span class="proj-name" id="projLabel">—</span>
+    <button class="cfg-sel" style="width:auto;padding:5px 10px;font-size:11px;margin-left:8px" id="projBtn" onclick="handleProjBtn()">
+      新建项目
+    </button>
     <div class="tbar-right">
-      <button class="cfg-sel" style="width:auto;padding:5px 10px;font-size:11px" onclick="newProjectFromUI()">
-        新建项目
+      <button class="cfg-sel" style="width:auto;padding:5px 10px;font-size:11px" id="imgPlatformBtn" onclick="showImgPlatformModal()">
+        <span id="imgPlatformLabel">图像平台</span>
       </button>
-      <button class="cfg-sel" style="width:auto;padding:5px 10px;font-size:11px" onclick="showProjectModal()">
-        切换项目
-      </button>
-      <button class="cfg-sel" style="width:auto;padding:5px 10px;font-size:11px" id="platformBtn" onclick="showPlatformModal()">
-        <span id="platformLabel">选择平台</span>
+      <button class="cfg-sel" style="width:auto;padding:5px 10px;font-size:11px" id="txtPlatformBtn" onclick="showTxtPlatformModal()">
+        <span id="txtPlatformLabel">文本平台</span>
       </button>
     </div>
   </div>
@@ -288,10 +423,14 @@ textarea#userInput::placeholder { color: var(--dim); }
       </div>
 
       <div class="footer">
-        <div class="prompt-bar" id="promptBar">
+        <div class="footer-resizer" id="footerResizeHandle"></div>
+        <div class="footer-content">
+          <div class="prompt-bar" id="promptBar" style="display:none">
           <span class="plabel">Prompt →</span><span id="promptText"></span>
+          <button style="margin-left:8px;padding:2px 6px;font-size:10px;background:var(--bg4);border:1px solid var(--line2);border-radius:4px;cursor:pointer;color:var(--muted)" onclick="hidePromptBar()">收起</button>
         </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin:0 2px 8px 2px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <button id="showPromptBtn" style="padding:2px 8px;font-size:10px;background:transparent;border:1px solid var(--line2);border-radius:4px;cursor:pointer;color:var(--muted);display:none" onclick="showPromptBar()">查看完整 Prompt</button>
           <div id="polishStatus" style="font-size:11px;color:var(--muted);display:none">
             <span id="polishStatusText"></span>
             <button style="margin-left:8px;padding:2px 6px;font-size:10px;background:var(--bg4);border:1px solid var(--line2);border-radius:4px;cursor:pointer;color:var(--text)" onclick="cancelPolish()">取消润色</button>
@@ -299,7 +438,7 @@ textarea#userInput::placeholder { color: var(--dim); }
           </div>
         </div>
         <div class="input-row">
-          <div class="input-wrap">
+          <div class="input-wrap" style="display:flex;flex-direction:column">
             <textarea id="userInput" placeholder="描述你的设计需求或改进方向…" rows="2"
               onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();generate()}"></textarea>
           </div>
@@ -311,6 +450,7 @@ textarea#userInput::placeholder { color: var(--dim); }
               <i class="ti ti-sparkles"></i> 生成
             </button>
           </div>
+        </div>
         </div>
       </div>
     </div>
@@ -348,30 +488,44 @@ textarea#userInput::placeholder { color: var(--dim); }
           <div class="sec" style="margin-top:14px">参考图</div>
           <div class="ref-grid" id="refGrid"></div>
           <button class="upload-ref-btn" onclick="document.getElementById('refUpload').click()"><i class="ti ti-plus"></i> 添加参考图</button>
+          <div class="sec" style="margin-top:14px">模型记忆</div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:6px">每次生成时都会附加到提示词中（永久生效）</div>
+          <textarea id="modelMemory" class="model-memory-area" placeholder="输入永久附加的提示词，如：现代风格、高质量渲染、专业建筑效果图…" oninput="saveModelMemory()"></textarea>
         </div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- Platform Modal -->
-<div id="platformModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center">
-  <div style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;padding:24px;width:400px">
-    <div style="font-size:16px;font-weight:600;margin-bottom:16px;color:var(--text)">选择平台和模型</div>
+<!-- Image Platform Modal -->
+<div id="imgPlatformModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;padding:24px;width:360px">
+    <div style="font-size:16px;font-weight:600;margin-bottom:16px;color:var(--text)">图像平台</div>
     <div class="cfg-grp" style="margin-bottom:12px">
-      <div class="cfg-lbl">图像平台</div>
+      <div class="cfg-lbl">平台</div>
       <select class="cfg-sel" id="platformSelect" onchange="onPlatformChange()">
         <option value="">加载中...</option>
       </select>
     </div>
-    <div class="cfg-grp" style="margin-bottom:12px">
+    <div class="cfg-grp" style="margin-bottom:16px">
       <div class="cfg-lbl">图像模型</div>
       <select class="cfg-sel" id="imageModelSelect">
         <option value="">请先选择平台</option>
       </select>
     </div>
+    <div style="display:flex;gap:10px">
+      <button class="cfg-sel" style="flex:1;cursor:pointer" onclick="hideImgPlatformModal()">取消</button>
+      <button class="send-btn" style="flex:1;justify-content:center" onclick="applyImgPlatform()">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- Text Platform Modal -->
+<div id="txtPlatformModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;padding:24px;width:360px">
+    <div style="font-size:16px;font-weight:600;margin-bottom:16px;color:var(--text)">文本平台（提示词润色）</div>
     <div class="cfg-grp" style="margin-bottom:12px">
-      <div class="cfg-lbl">文本平台（提示词润色）</div>
+      <div class="cfg-lbl">平台</div>
       <select class="cfg-sel" id="textPlatformSelect" onchange="onTextPlatformChange()">
         <option value="">加载中...</option>
       </select>
@@ -383,8 +537,8 @@ textarea#userInput::placeholder { color: var(--dim); }
       </select>
     </div>
     <div style="display:flex;gap:10px">
-      <button class="cfg-sel" style="flex:1;cursor:pointer" onclick="hidePlatformModal()">取消</button>
-      <button class="send-btn" style="flex:1;justify-content:center" onclick="applyPlatform()">确定</button>
+      <button class="cfg-sel" style="flex:1;cursor:pointer" onclick="hideTxtPlatformModal()">取消</button>
+      <button class="send-btn" style="flex:1;justify-content:center" onclick="applyTxtPlatform()">确定</button>
     </div>
   </div>
 </div>
@@ -407,6 +561,46 @@ textarea#userInput::placeholder { color: var(--dim); }
 <input type="file" id="refUpload" accept="image/*" style="display:none" onchange="uploadRef(this)">
 <div class="toast" id="toast"></div>
 
+<!-- Input Modal -->
+<div id="inputModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:1001;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;padding:20px;width:320px">
+    <div style="font-size:14px;font-weight:600;margin-bottom:12px;color:var(--text)" id="inputModalTitle">输入</div>
+    <input type="text" id="inputModalField" style="width:100%;padding:10px 12px;background:var(--bg3);border:1px solid var(--line2);border-radius:6px;color:var(--text);font-size:13px;outline:none" placeholder="" onkeydown="if(event.key==='Enter')confirmInputModal()">
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button style="flex:1;padding:8px 0;background:var(--bg4);border:1px solid var(--line2);border-radius:6px;color:var(--muted);font-size:12px;cursor:pointer" onclick="hideInputModal()">取消</button>
+      <button style="flex:1;padding:8px 0;background:var(--accent);border:none;border-radius:6px;color:var(--bg);font-size:12px;font-weight:500;cursor:pointer" id="inputModalConfirm" onclick="confirmInputModal()">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Modal -->
+<div id="confirmModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:1001;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;padding:20px;width:320px">
+    <div style="font-size:14px;font-weight:600;margin-bottom:8px;color:var(--text)">确认删除</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px" id="confirmModalMsg">确定删除此项目？此操作不可恢复。</div>
+    <div style="display:flex;gap:10px">
+      <button style="flex:1;padding:8px 0;background:var(--bg4);border:1px solid var(--line2);border-radius:6px;color:var(--muted);font-size:12px;cursor:pointer" onclick="hideConfirmModal()">取消</button>
+      <button style="flex:1;padding:8px 0;background:var(--red);border:none;border-radius:6px;color:#fff;font-size:12px;font-weight:500;cursor:pointer" id="confirmModalBtn" onclick="confirmDelete()">删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- Image Viewer Modal -->
+<div id="imageViewerModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.85);z-index:1002;align-items:center;justify-content:center">
+  <button style="position:absolute;top:16px;right:16px;width:36px;height:36px;background:var(--bg4);border:1px solid var(--line2);border-radius:50%;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:20px" onclick="hideImageViewer()">
+    ✕
+  </button>
+  <img id="viewerImage" style="max-width:90vw;max-height:85vh;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.5)">
+  <div style="position:absolute;bottom:20px;display:flex;gap:10px">
+    <button id="viewerSelectBtn" style="padding:8px 20px;background:var(--accent);border:none;border-radius:6px;color:var(--bg);font-size:12px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:6px" onclick="selectFromViewer()">
+      <i class="ti ti-check"></i> 选择
+    </button>
+    <button style="padding:8px 20px;background:var(--bg4);border:1px solid var(--line2);border-radius:6px;color:var(--text);font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px" onclick="downloadFromViewer()">
+      <i class="ti ti-download"></i> 下载
+    </button>
+  </div>
+</div>
+
 <script>
 // ── State ────────────────────────────────────
 let currentN = 4;
@@ -419,11 +613,69 @@ let currentTextPlatform = 'deepseek';
 let currentTextModel = 'deepseek-chat';
 let sideWidth = parseInt(localStorage.getItem('archai_side_width') || '288', 10);
 
-// Persistence key
+// Persistence keys
 const STATE_KEY = 'archai_session_path';
+const CONFIG_KEY = 'archai_config';
+const INPUT_KEY = 'archai_input';
+const MEMORY_KEY = 'archai_model_memory';
+
+// Save config to localStorage
+function saveConfig() {
+  localStorage.setItem(CONFIG_KEY, JSON.stringify({
+    platform: currentPlatform,
+    imageModel: currentImageModel,
+    textPlatform: currentTextPlatform,
+    textModel: currentTextModel
+  }));
+}
+
+// Load config from localStorage
+function loadConfig() {
+  const saved = localStorage.getItem(CONFIG_KEY);
+  if (saved) {
+    try {
+      const config = JSON.parse(saved);
+      currentPlatform = config.platform || 'openai';
+      currentImageModel = config.imageModel || 'gpt-image-1';
+      currentTextPlatform = config.textPlatform || 'v3';
+      currentTextModel = config.textModel || 'gpt-4o-mini';
+    } catch (e) {}
+  }
+}
+
+// Save input to localStorage
+function saveInput() {
+  const input = document.getElementById('userInput')?.value || '';
+  localStorage.setItem(INPUT_KEY, input);
+}
+
+// Load input from localStorage
+function loadInput() {
+  const saved = localStorage.getItem(INPUT_KEY);
+  if (saved) {
+    document.getElementById('userInput').value = saved;
+  }
+}
+
+// Save model memory to localStorage
+function saveModelMemory() {
+  const memory = document.getElementById('modelMemory')?.value || '';
+  localStorage.setItem(MEMORY_KEY, memory);
+}
+
+// Load model memory from localStorage
+function loadModelMemory() {
+  const saved = localStorage.getItem(MEMORY_KEY);
+  if (saved) {
+    document.getElementById('modelMemory').value = saved;
+  }
+}
 
 // ── Init ──────────────────────────────────────
 async function init() {
+  // Load config from localStorage first
+  loadConfig();
+
   // Load platforms
   const platformsRes = await fetch('/api/platforms').catch(() => null);
   if (platformsRes) {
@@ -440,14 +692,17 @@ async function init() {
     onTextPlatformChange();
   }
 
-  // Load current config
+  // Load current config from server
   const currentRes = await fetch('/api/current_platform').catch(() => null);
   if (currentRes) {
     const current = await currentRes.json();
-    currentPlatform = current.platform;
-    currentImageModel = current.image_model;
-    currentTextPlatform = current.text_platform || 'deepseek';
-    currentTextModel = current.text_model || 'deepseek-chat';
+    // Prefer localStorage config if available
+    if (!localStorage.getItem(CONFIG_KEY)) {
+      currentPlatform = current.platform;
+      currentImageModel = current.image_model;
+      currentTextPlatform = current.text_platform || 'v3';
+      currentTextModel = current.text_model || 'gpt-4o-mini';
+    }
     document.getElementById('platformSelect').value = currentPlatform;
     document.getElementById('textPlatformSelect').value = currentTextPlatform;
     onPlatformChange();
@@ -460,6 +715,20 @@ async function init() {
   if (!Number.isFinite(sideWidth)) sideWidth = 288;
   applySideWidth(sideWidth);
   initSideResize();
+
+  // Init footer height
+  if (!Number.isFinite(footerHeight)) footerHeight = 180;
+  applyFooterHeight(footerHeight);
+  initFooterResize();
+
+  // Load saved input
+  loadInput();
+  
+  // Load model memory
+  loadModelMemory();
+
+  // Auto-save input on change
+  document.getElementById('userInput').addEventListener('input', saveInput);
 
   // Try to restore session from localStorage
   const savedPath = localStorage.getItem(STATE_KEY);
@@ -502,15 +771,24 @@ async function autoCreateProject() {
 function updatePlatformLabel() {
   const imgName = platformsData[currentPlatform]?.name || currentPlatform;
   const txtName = platformsData[currentTextPlatform]?.name || currentTextPlatform;
-  document.getElementById('platformLabel').textContent = `${imgName} · ${currentImageModel} | ${txtName} · ${currentTextModel}`;
+  document.getElementById('imgPlatformLabel').textContent = `${imgName} · ${currentImageModel}`;
+  document.getElementById('txtPlatformLabel').textContent = `${txtName} · ${currentTextModel}`;
 }
 
-function showPlatformModal() {
-  document.getElementById('platformModal').style.display = 'flex';
+function showImgPlatformModal() {
+  document.getElementById('imgPlatformModal').style.display = 'flex';
 }
 
-function hidePlatformModal() {
-  document.getElementById('platformModal').style.display = 'none';
+function hideImgPlatformModal() {
+  document.getElementById('imgPlatformModal').style.display = 'none';
+}
+
+function showTxtPlatformModal() {
+  document.getElementById('txtPlatformModal').style.display = 'flex';
+}
+
+function hideTxtPlatformModal() {
+  document.getElementById('txtPlatformModal').style.display = 'none';
 }
 
 function onPlatformChange() {
@@ -531,51 +809,67 @@ function onTextPlatformChange() {
   textEl.innerHTML = textModels.map(m => `<option value="${m}">${m}</option>`).join('');
 }
 
-async function applyPlatform() {
+async function applyImgPlatform() {
   const platform = document.getElementById('platformSelect').value;
   const imageModel = document.getElementById('imageModelSelect').value;
-  const textPlatform = document.getElementById('textPlatformSelect').value;
-  const textModel = document.getElementById('textModelSelect').value;
-  
+
   await fetch('/api/set_platform', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({
       platform,
-      image_model: imageModel,
+      image_model: imageModel
+    })
+  });
+
+  currentPlatform = platform;
+  currentImageModel = imageModel;
+  saveConfig();
+  updatePlatformLabel();
+  hideImgPlatformModal();
+  toast('图像平台已切换');
+}
+
+async function applyTxtPlatform() {
+  const textPlatform = document.getElementById('textPlatformSelect').value;
+  const textModel = document.getElementById('textModelSelect').value;
+
+  await fetch('/api/set_platform', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
       text_platform: textPlatform,
       text_model: textModel
     })
   });
-  
-  currentPlatform = platform;
-  currentImageModel = imageModel;
+
   currentTextPlatform = textPlatform;
   currentTextModel = textModel;
+  saveConfig();
   updatePlatformLabel();
-  hidePlatformModal();
-  toast('平台已切换');
+  hideTxtPlatformModal();
+  toast('文本平台已切换');
 }
 
+
+
 async function newProjectFromUI(closeAfter = false) {
-  const name = (window.prompt('请输入新项目名称', '建筑设计项目') || '').trim();
-  if (!name) return;
-
-  const res = await fetch('/api/project/new', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({project_name: name})
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    toast('新建项目失败: ' + (err.detail || res.status));
-    return;
-  }
-
-  await refreshState();
-  await loadProjectList();
-  if (closeAfter) hideProjectModal();
-  toast('项目已新建');
+  showInputModal('新建项目', '建筑设计项目', async (path, name) => {
+    const res = await fetch('/api/project/new', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({project_name: name})
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      toast('新建项目失败: ' + (err.detail || res.status));
+      return;
+    }
+    await refreshState();
+    await loadProjectList();
+    if (closeAfter) hideProjectModal();
+    toast('项目已新建');
+  }, null);
 }
 
 function showProjectModal() {
@@ -609,25 +903,107 @@ async function loadProjectList() {
   }
 
   box.innerHTML = items.map(p => `
-    <div class="hist-item" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg3)">
+    <div class="hist-item" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg3);cursor:pointer" onclick="openProject('${p.path.replace(/\\/g, '\\\\')}')">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-        <div style="min-width:0">
+        <div style="min-width:0;flex:1">
           <div style="font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.project}</div>
           <div style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-top:2px">${p.created} · ${p.nodes} 节点</div>
         </div>
-        <button class="cfg-sel" style="width:auto;padding:4px 8px;font-size:11px" data-path="${p.path}">打开</button>
+        <div style="display:flex;gap:4px;flex-shrink:0">
+          <button style="padding:4px 8px;font-size:10px;background:var(--bg4);border:1px solid var(--line2);border-radius:4px;cursor:pointer;color:var(--muted)" onclick="event.stopPropagation();renameProject('${p.path.replace(/\\/g, '\\\\')}','${p.project.replace(/'/g, "\\'")}')">编辑</button>
+          <button style="padding:4px 8px;font-size:10px;background:var(--bg4);border:1px solid var(--line2);border-radius:4px;cursor:pointer;color:var(--red)" onclick="event.stopPropagation();deleteProject('${p.path.replace(/\\/g, '\\\\')}','${p.project.replace(/'/g, "\\'")}')">删除</button>
+        </div>
       </div>
     </div>
   `).join('');
+}
 
-  box.querySelectorAll('button[data-path]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const path = btn.getAttribute('data-path');
-      if (!path) return;
-      await loadSession(path);
-      hideProjectModal();
-    });
+async function openProject(path) {
+  await loadSession(path);
+  hideProjectModal();
+  toast('项目已加载');
+}
+
+// ── Custom Modals ─────────────────────────────
+let _inputCallback = null;
+let _inputPath = null;
+let _deletePath = null;
+
+function showInputModal(title, defaultValue, callback, path) {
+  document.getElementById('inputModalTitle').textContent = title;
+  const field = document.getElementById('inputModalField');
+  field.value = defaultValue;
+  _inputCallback = callback;
+  _inputPath = path;
+  document.getElementById('inputModal').style.display = 'flex';
+  setTimeout(() => { field.focus(); field.select(); }, 50);
+}
+
+function hideInputModal() {
+  document.getElementById('inputModal').style.display = 'none';
+  _inputCallback = null;
+  _inputPath = null;
+}
+
+function confirmInputModal() {
+  const value = document.getElementById('inputModalField').value.trim();
+  if (_inputCallback && value) {
+    _inputCallback(_inputPath, value);
+  }
+  hideInputModal();
+}
+
+function showConfirmModal(msg, path) {
+  document.getElementById('confirmModalMsg').textContent = msg;
+  _deletePath = path;
+  document.getElementById('confirmModal').style.display = 'flex';
+}
+
+function hideConfirmModal() {
+  document.getElementById('confirmModal').style.display = 'none';
+  _deletePath = null;
+}
+
+async function confirmDelete() {
+  if (!_deletePath) return;
+  const res = await fetch('/api/project/delete', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({path: _deletePath})
   });
+  hideConfirmModal();
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    toast('删除失败: ' + (err.detail || res.status));
+    return;
+  }
+  await loadProjectList();
+  await refreshState();
+  toast('项目已删除');
+}
+
+async function doRename(path, newName) {
+  const res = await fetch('/api/project/rename', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({path, new_name: newName})
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    toast('重命名失败: ' + (err.detail || res.status));
+    return;
+  }
+  await loadProjectList();
+  await refreshState();
+  toast('项目已重命名');
+}
+
+async function renameProject(path, oldName) {
+  showInputModal('修改项目名称', oldName, doRename, path);
+}
+
+async function deleteProject(path, name) {
+  showConfirmModal(`确定删除项目「${name}」？此操作不可恢复。`, path);
 }
 
 // ── Refresh state ─────────────────────────────
@@ -667,6 +1043,7 @@ async function polishPrompt() {
 
     // 显示润色结果
     inputEl.value = polishedInput;
+    saveInput();  // 保存润色后的输入
 
     // 显示润色状态
     const statusEl = document.getElementById('polishStatus');
@@ -706,10 +1083,90 @@ async function rePolish() {
 }
 
 function applySideWidth(width) {
-  const clamped = Math.max(240, Math.min(520, Math.round(width)));
+  const clamped = Math.max(200, Math.min(700, Math.round(width)));
   sideWidth = clamped;
   document.documentElement.style.setProperty('--side-width', `${clamped}px`);
   localStorage.setItem('archai_side_width', String(clamped));
+}
+
+// ── Footer resize ─────────────────────────────
+let footerHeight = parseInt(localStorage.getItem('archai_footer_height') || '180', 10);
+
+function applyFooterHeight(height) {
+  const clamped = Math.max(100, Math.min(400, Math.round(height)));
+  footerHeight = clamped;
+  const footer = document.querySelector('.footer');
+  if (footer) footer.style.height = clamped + 'px';
+  
+  // 根据footer高度计算textarea高度
+  // 按钮区域固定约50px，gap 6px，padding 12px，resizer 6px
+  // textarea高度 = footer高度 - 固定区域(74px)
+  const textareaHeight = Math.max(30, Math.min(350, clamped - 74));
+  const textarea = document.getElementById('userInput');
+  if (textarea) textarea.style.height = textareaHeight + 'px';
+  
+  localStorage.setItem('archai_footer_height', String(clamped));
+}
+
+function initFooterResize() {
+  const handle = document.getElementById('footerResizeHandle');
+  if (!handle) return;
+
+  let dragging = false;
+  let startY = 0;
+  let startHeight = footerHeight;
+
+  const onMove = (e) => {
+    if (!dragging) return;
+    const dy = startY - e.clientY;  // 向上拖增大，向下拖减小
+    applyFooterHeight(startHeight + dy);
+  };
+
+  const onUp = () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.classList.remove('resizing');
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+  };
+
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    dragging = true;
+    startY = e.clientY;
+    startHeight = footerHeight;
+    document.body.classList.add('resizing');
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  });
+}
+
+// ── Image viewer ─────────────────────────────
+let viewerImageUrl = null;
+
+function showImageViewer(url) {
+  viewerImageUrl = url;
+  document.getElementById('viewerImage').src = url;
+  document.getElementById('imageViewerModal').style.display = 'flex';
+}
+
+function hideImageViewer() {
+  document.getElementById('imageViewerModal').style.display = 'none';
+  viewerImageUrl = null;
+}
+
+async function selectFromViewer() {
+  if (!viewerImageUrl) return;
+  await selectImage(null, viewerImageUrl);
+  hideImageViewer();
+}
+
+function downloadFromViewer() {
+  if (!viewerImageUrl) return;
+  const a = document.createElement('a');
+  a.href = viewerImageUrl;
+  a.download = viewerImageUrl.split('/').pop() || 'image.png';
+  a.click();
 }
 
 function initSideResize() {
@@ -767,7 +1224,16 @@ async function refreshState() {
   if (!res.ok) return;
   const s = await res.json();
 
-  document.getElementById('projLabel').textContent = s.project;
+  // 更新项目按钮文本
+  const projBtn = document.getElementById('projBtn');
+  if (s.project) {
+    projBtn.textContent = s.project;
+    projBtn.onclick = () => showProjectModal();
+  } else {
+    projBtn.textContent = '新建项目';
+    projBtn.onclick = () => newProjectFromUI();
+  }
+
   renderBreadcrumb(s);
   renderTree(s.tree, document.getElementById('treeContainer'));
   renderPathTags(s.path_tags);
@@ -778,9 +1244,10 @@ async function refreshState() {
 
   if (s.current_prompt) {
     document.getElementById('promptText').textContent = s.current_prompt;
-    document.getElementById('promptBar').classList.add('show');
+    document.getElementById('showPromptBtn').style.display = 'inline-block';
   } else {
-    document.getElementById('promptBar').classList.remove('show');
+    document.getElementById('promptBar').style.display = 'none';
+    document.getElementById('showPromptBtn').style.display = 'none';
   }
   
   // Save to localStorage
@@ -789,10 +1256,33 @@ async function refreshState() {
   }
 }
 
+function handleProjBtn() {
+  const projBtn = document.getElementById('projBtn');
+  if (projBtn.textContent === '新建项目') {
+    newProjectFromUI();
+  } else {
+    showProjectModal();
+  }
+}
+
+// ── Prompt bar ────────────────────────────────
+function showPromptBar() {
+  document.getElementById('promptBar').style.display = 'flex';
+  document.getElementById('showPromptBtn').style.display = 'none';
+}
+
+function hidePromptBar() {
+  document.getElementById('promptBar').style.display = 'none';
+  document.getElementById('showPromptBtn').style.display = 'inline-block';
+}
+
 // ── Generate ──────────────────────────────────
 async function generate() {
   const input = document.getElementById('userInput').value.trim();
   if (!input) { toast('请输入设计需求'); return; }
+  
+  // 获取模型记忆
+  const modelMemory = document.getElementById('modelMemory')?.value.trim() || '';
 
   const btn = document.getElementById('sendBtn');
   btn.disabled = true;
@@ -800,13 +1290,14 @@ async function generate() {
 
   // Show loading placeholders
   showLoadingCards(currentN);
-  document.getElementById('promptBar').classList.remove('show');
+  document.getElementById('promptBar').style.display = 'none';
+  document.getElementById('showPromptBtn').style.display = 'none';
 
   try {
     // 直接使用输入框内容，不再后端润色（用户已在前端润色）
     const res = await fetch('/api/generate', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({user_input: input, n: currentN, optimize_prompt: false})
+      body: JSON.stringify({user_input: input, n: currentN, optimize_prompt: false, model_memory: modelMemory})
     });
 
     btn.disabled = false;
@@ -825,6 +1316,7 @@ async function generate() {
     selectedImageUrl = null;
     originalInput = '';
     polishedInput = '';
+    localStorage.removeItem(INPUT_KEY);  // 清除保存的输入
 
     await refreshState();
   } catch (e) {
@@ -873,13 +1365,16 @@ function renderImages(images, selectedUrl = null) {
     return `
       <div class="img-card ${img.url === selectedUrl ? 'sel' : ''}" onclick="selectImage(this,'${img.url}')">
         <img src="${img.url}" alt="图${i+1}" loading="lazy">
+        <button class="img-zoom-btn" onclick="event.stopPropagation();showImageViewer('${img.url}')" title="大图查看">
+          🔍
+        </button>
       </div>`;
   }).join('');
 }
 
 async function selectImage(el, url) {
   // 如果点击的是已选中的图片，则取消选择
-  if (el.classList.contains('sel')) {
+  if (el && el.classList.contains('sel')) {
     el.classList.remove('sel');
     selectedImageUrl = null;
     const res = await fetch('/api/select_image', {
@@ -895,10 +1390,10 @@ async function selectImage(el, url) {
     await refreshState();
     return;
   }
-  
+
   // 否则选择该图片
   document.querySelectorAll('#imgGrid .img-card').forEach(c => c.classList.remove('sel'));
-  el.classList.add('sel');
+  if (el) el.classList.add('sel');
   selectedImageUrl = url;
   const res = await fetch('/api/select_image', {
     method: 'POST', headers: {'Content-Type':'application/json'},
@@ -945,19 +1440,28 @@ function renderBreadcrumb(s) {
   const path = [];
   function walk(node) {
     if (node.is_current) {
-      path.push(`<span class="bc-cur">${node.label}</span>`);
+      path.push({id: node.id, label: node.label, is_current: true});
       return true;
     }
     for (const child of node.children) {
       if (walk(child)) {
-        path.unshift(`<span>${node.label}</span>`);
+        path.unshift({id: node.id, label: node.label, is_current: false});
         return true;
       }
     }
     return false;
   }
   walk(s.tree);
-  document.getElementById('breadcrumb').innerHTML = path.join('<span class="bc-sep"> › </span>');
+  
+  // 截断过长的label，类似Windows效果
+  const truncateLabel = (label, maxLen = 25) => {
+    if (label.length <= maxLen) return label;
+    return label.substring(0, maxLen - 2) + '…';
+  };
+  
+  document.getElementById('breadcrumb').innerHTML = path.map((p, i) =>
+    `<span class="bc-item ${p.is_current ? 'bc-cur' : ''}" onclick="switchToNode('${p.id}')" title="${p.label}">${truncateLabel(p.label)}</span>`
+  ).join('<span class="bc-sep">›</span>');
 }
 
 function renderTree(node, container, depth=0) {
@@ -997,13 +1501,13 @@ function renderPathTags(tags) {
 
 function renderHistory(history, savePath) {
   document.getElementById('histContainer').innerHTML = history.map(h => `
-    <div class="hist-item ${h.is_current ? 'current' : ''}">
+    <div class="hist-item ${h.is_current ? 'current' : ''}" onclick="switchToNode('${h.id}')" style="cursor:pointer">
       <div class="hist-head">
         <span class="hist-v">${h.id}</span>
         <span class="hist-text">${h.user_input}</span>
       </div>
       ${h.selected ? '<div class="hist-sel"><i class="ti ti-check" style="font-size:10px"></i> 已选中图片</div>' : ''}
-      ${h.prompt ? `<div class="hist-prompt-toggle" onclick="this.nextElementSibling.classList.toggle('show')">查看优化后 prompt ▾</div>
+      ${h.prompt ? `<div class="hist-prompt-toggle" onclick="event.stopPropagation();this.nextElementSibling.classList.toggle('show')">查看优化后 prompt ▾</div>
         <div class="hist-prompt">${h.prompt}</div>` : ''}
     </div>`).join('');
   document.getElementById('savePath').textContent = savePath || '';

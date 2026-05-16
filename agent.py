@@ -181,17 +181,20 @@ def _get_text_api_key() -> str:
 # 1. Prompt Agent
 # ─────────────────────────────────────────────
 
-_SYSTEM_PROMPT = """你是一名专业的建筑效果图提示词工程师。
+_SYSTEM_PROMPT = """你是一名建筑效果图提示词助手。
 
-你的任务是对用户的描述进行**轻微润色**，保持用户原意，只做必要的优化。
+你的任务很简单：**把用户的需求描述改得更清楚、更具体**。
 
 规则：
-1. 保持用户的核心意图不变，只做微调
-2. 如果用户描述已经很完整，直接返回原文即可
-3. 适当补充：视角、光线、材质等建筑渲染要素（如果用户未提及）
-4. 输出80-150字的中文描述，直接输出，不加任何前缀或解释
-5. 如果有历史prompt，在原有基础上微调，不要大幅改动
-6. 结尾可加上：照片级建筑效果图, 8k分辨率
+1. 用户说什么就改什么，不要添加用户没要求的内容
+2. 如果用户说"改成XX"，你就把原来的XX改成新的
+3. 如果用户描述模糊，帮他补充具体细节（如材质、视角）
+4. 保持简洁，不要写太长，50-100字足够
+5. 直接输出润色后的文字，不要解释
+
+示例：
+用户输入："把屋顶改成红色"
+润色输出："红色屋顶的现代建筑，保持原有建筑结构和周围环境，照片级建筑效果图"
 """
 
 
@@ -208,13 +211,15 @@ def prompt_agent(context: dict) -> str:
     history_text = _format_history(context["history"])
     weights_text = _format_weights(context["style_weights"])
     selected_text = _format_selected_images(context.get("selected_images", []))
+    model_memory = context.get("model_memory", "")
+    memory_text = f"\n模型记忆（永久附加）：{model_memory}" if model_memory else ""
 
     user_msg = (
         f"项目：{context['project_name']}\n\n"
         f"设计迭代路径（root → 当前）：\n{history_text}\n\n"
         f"路径上的已选图片记忆：\n{selected_text}\n\n"
         f"本次新需求：{context['new_user_input']}\n\n"
-        f"设计师风格偏好：{weights_text}"
+        f"设计师风格偏好：{weights_text}{memory_text}"
     )
 
     # OpenRouter需要特殊header
@@ -258,6 +263,7 @@ def compose_prompt_from_context(context: dict) -> str:
     selected_images = context.get("selected_images", []) or []
     style_weights = context.get("style_weights", {}) or {}
     new_user_input = (context.get("new_user_input") or "").strip()
+    model_memory = (context.get("model_memory") or "").strip()
 
     memory_inputs = [h.get("user_input", "").strip() for h in history if h.get("user_input")]
     memory_prompts = [h.get("prompt_used", "").strip() for h in history if h.get("prompt_used")]
@@ -267,6 +273,9 @@ def compose_prompt_from_context(context: dict) -> str:
     top_styles = [k for k, v in top_styles if v >= 0.3]
 
     parts = []
+    # 模型记忆优先添加
+    if model_memory:
+        parts.append("Model memory (always applied): " + model_memory + ".")
     if memory_inputs:
         parts.append("Design evolution memory from previous nodes: " + " | ".join(memory_inputs[-6:]) + ".")
     if memory_prompts:

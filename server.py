@@ -100,6 +100,43 @@ def load_project(path: str = Form(...)):
 def list_projects():
     return sm.list_sessions()
 
+class RenameProjectReq(BaseModel):
+    path: str
+    new_name: str
+
+@app.post("/api/project/rename")
+def rename_project(req: RenameProjectReq):
+    """重命名项目"""
+    global _session, _last_session_path
+    try:
+        s = sm.load_session(req.path)
+        s["project"] = req.new_name
+        sm._save(s)
+        # 如果是当前会话，更新内存
+        if _session and _session.get("save_path") == req.path:
+            _session["project"] = req.new_name
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+class DeleteProjectReq(BaseModel):
+    path: str
+
+@app.post("/api/project/delete")
+def delete_project(req: DeleteProjectReq):
+    """删除项目"""
+    global _session, _last_session_path
+    try:
+        import os
+        # 如果删除的是当前会话，清空内存
+        if _session and _session.get("save_path") == req.path:
+            _session = {}
+            _last_session_path = ""
+        os.remove(req.path)
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
 @app.get("/api/project/state")
 def get_state():
     s = _require_session()
@@ -126,6 +163,7 @@ class GenerateReq(BaseModel):
     n: int = 4
     parent_node_id: Optional[str] = None
     optimize_prompt: bool = True
+    model_memory: Optional[str] = None
 
 class PolishReq(BaseModel):
     user_input: str
@@ -160,6 +198,10 @@ def generate(req: GenerateReq):
         context = sm.build_context_for_agent(s, req.user_input, req.parent_node_id)
     except ValueError as e:
         raise HTTPException(400, str(e))
+    
+    # 添加模型记忆到context
+    if req.model_memory:
+        context["model_memory"] = req.model_memory
 
     prompt_warning = None
     if req.optimize_prompt:
