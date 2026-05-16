@@ -1657,7 +1657,7 @@ let voiceInputText = '';
 async function startVoiceInput() {
   const btn = document.getElementById('voiceBtn');
   const input = document.getElementById('userInput');
-  
+
   if (!isRecording) {
     // 检查浏览器支持
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1665,16 +1665,23 @@ async function startVoiceInput() {
       toast('浏览器不支持语音识别，请使用Chrome');
       return;
     }
-    
+
     try {
       recognition = new SpeechRecognition();
       recognition.lang = 'zh-CN';
       recognition.continuous = true;
       recognition.interimResults = true;
-      
-      // 记录开始位置
-      voiceInputStartPos = input.selectionStart;
-      voiceInputText = input.value.substring(0, voiceInputStartPos);
+
+      // 如果输入框有焦点，使用当前光标位置；否则追加到末尾
+      const hasFocus = document.activeElement === input;
+      if (hasFocus) {
+        voiceInputStartPos = input.selectionStart;
+        voiceInputText = input.value.substring(0, voiceInputStartPos);
+      } else {
+        // 没有焦点时，追加到末尾
+        voiceInputText = input.value;
+        voiceInputStartPos = voiceInputText.length;
+      }
       if (voiceInputText && !voiceInputText.endsWith(' ')) {
         voiceInputText += ' ';
         voiceInputStartPos++;
