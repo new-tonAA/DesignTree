@@ -583,6 +583,26 @@ textarea#userInput::placeholder { color: var(--dim); }
   border: 1px solid var(--line);
   background: var(--bg2);
 }
+.picked-zoom-btn {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  background: rgba(0,0,0,.6);
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity .2s, transform .15s;
+  font-size: 12px;
+}
+.picked-item:hover .picked-zoom-btn { opacity: 1; }
+.picked-zoom-btn:hover { background: rgba(0,0,0,.8); transform: scale(1.1); }
 .picked-meta { margin-top: 6px; }
 .picked-node { font-size: 11px; color: var(--accent); font-family: var(--mono); }
 .picked-text { font-size: 11px; color: var(--text); line-height: 1.4; margin-top: 2px; }
@@ -2142,7 +2162,10 @@ function renderPicked(history) {
 
   box.innerHTML = `<div class="picked-list">${picked.map(h => `
     <div class="picked-item ${h.is_current ? 'current' : ''}" data-node-id="${h.id}">
-      <img class="picked-thumb" src="${h.selected_image.url}" alt="selected ${h.id}" loading="lazy">
+      <div style="position:relative">
+        <img class="picked-thumb" src="${h.selected_image.url}" alt="selected ${h.id}" loading="lazy">
+        <button class="picked-zoom-btn" onclick="event.stopPropagation();showImageViewer('${h.selected_image.url}')" title="大图查看">🔍</button>
+      </div>
       <div class="picked-meta">
         <div class="picked-node">${h.id}</div>
         <div class="picked-text">${h.user_input || ''}</div>
