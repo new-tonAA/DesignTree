@@ -325,7 +325,7 @@ def generate(req: GenerateReq):
     
     images = agent.generate_images(
         prompt, n=req.n,
-        save_dir=Path(__file__).parent / "static" / "uploads",
+        save_dir=APP_DIR / "static" / "uploads",
         on_image_ready=on_image_ready,
     )
     
