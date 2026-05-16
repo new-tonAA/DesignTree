@@ -410,7 +410,7 @@ textarea#userInput::placeholder { color: var(--dim); }
           <button class="nb" onclick="setN(this,1,'g1')">1</button>
           <button class="nb" onclick="setN(this,2,'g2')">2</button>
           <button class="nb on" onclick="setN(this,4,'g4')">4</button>
-          <button class="nb" onclick="setN(this,6,'g6')">6</button>
+          <button class="nb" onclick="showCustomN()">自定义</button>
         </div>
       </div>
 
@@ -1425,6 +1425,33 @@ function setN(el, n, cls) {
   el.classList.add('on');
   currentN = n; currentGridClass = cls;
   document.getElementById('imgGrid').className = 'img-grid ' + cls;
+}
+
+function showCustomN() {
+  showInputModal('自定义张数', '8', (path, value) => {
+    const n = parseInt(value);
+    if (n < 1 || n > 20) {
+      toast('张数需在1-20之间');
+      return;
+    }
+    // 根据张数选择合适的grid class
+    let cls = 'g4';
+    if (n === 1) cls = 'g1';
+    else if (n === 2) cls = 'g2';
+    else if (n <= 4) cls = 'g4';
+    else if (n <= 6) cls = 'g6';
+    else cls = 'g6';  // 大于6也用g6
+    
+    currentN = n;
+    currentGridClass = cls;
+    
+    // 高亮自定义按钮
+    document.querySelectorAll('.nb').forEach(b => b.classList.remove('on'));
+    document.querySelectorAll('.nb')[3].classList.add('on');
+    
+    document.getElementById('imgGrid').className = 'img-grid ' + cls;
+    toast(`已设置为 ${n} 张`);
+  }, null);
 }
 
 // ── Tab switcher ──────────────────────────────
