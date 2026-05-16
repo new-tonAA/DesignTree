@@ -75,11 +75,13 @@ def _new_node(node_id: str, parent_id: Optional[str], user_input: str) -> dict:
 
 def new_session(project_name: str) -> dict:
     """创建全新会话，返回session dict。"""
+    root_node = _new_node("root", None, project_name)
+    root_node["generating"] = False  # 根节点不需要生成图片
     session = {
         "project":        project_name,
         "created":        datetime.now().isoformat(),
         "current_node":   "root",
-        "nodes":          {"root": _new_node("root", None, project_name)},
+        "nodes":          {"root": root_node},
         "style_weights":  {},
         "reference_images": [],
         "save_path":      str(SESSIONS_DIR / f"{_slugify(project_name)}_{_ts()}.json"),
