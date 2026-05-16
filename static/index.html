@@ -159,18 +159,32 @@ body.resizing { cursor: col-resize; user-select: none; }
 }
 .cfg-sel:focus { border-color: var(--accent); }
 
-.input-row { display: flex; gap: 10px; align-items: stretch; }
-.input-wrap { flex: 1; position: relative; }
+.input-row { display: block; }
+.input-wrap {
+  flex: 1;
+  position: relative;
+  min-height: 80px;
+}
 textarea#userInput {
-  width: 100%; height: 72px; min-height: 48px; max-height: 350px;
+  width: 100%;
+  height: 72px;
+  min-height: 64px;
+  max-height: 350px;
   resize: none; overflow-y: auto;
-  background: var(--bg3); color: var(--text);
-  border: 1px solid var(--line2); border-radius: var(--radius);
-  padding: 10px 12px; font-size: 13px; font-family: var(--sans);
+  background: linear-gradient(180deg, rgba(34,36,40,0.95) 0%, rgba(26,28,32,0.98) 100%);
+  color: var(--text);
+  border: 1px solid var(--line2);
+  border-radius: 12px;
+  padding: 12px 156px 50px 14px;
+  font-size: 13px;
+  font-family: var(--sans);
   line-height: 1.5; outline: none; transition: border-color .15s;
   flex-shrink: 0;  /* textarea高度固定，不随flex压缩 */
 }
-textarea#userInput:focus { border-color: var(--accent); }
+textarea#userInput:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(200,169,110,0.15);
+}
 textarea#userInput::placeholder { color: var(--dim); }
 
 /* ── Model memory textarea ───────────────────── */
@@ -212,17 +226,24 @@ textarea#userInput::placeholder { color: var(--dim); }
   min-height: 24px;
 }
 .composer-main {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: end;
+  display: block;
 }
-.composer-input { min-width: 0; }
+.composer-input {
+  min-width: 0;
+  position: relative;
+}
 .composer-actions {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 112px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  pointer-events: none;
+}
+.composer-actions > button {
+  pointer-events: auto;
 }
 .mini-btn {
   padding: 3px 8px;
@@ -248,8 +269,9 @@ textarea#userInput::placeholder { color: var(--dim); }
   color: var(--muted);
 }
 #polishBtn {
-  padding: 8px 14px;
-  border-radius: var(--radius);
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
   background: var(--bg3);
   color: var(--muted);
   border: 1px solid var(--line2);
@@ -257,20 +279,83 @@ textarea#userInput::placeholder { color: var(--dim); }
   cursor: pointer;
   white-space: nowrap;
   transition: all .15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
 #polishBtn:hover { border-color: var(--accent); color: var(--accent); }
-#sendBtn { padding: 8px 14px; }
+#polishBtn:disabled { opacity: .5; cursor: not-allowed; }
+#sendBtn {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 9px;
+  box-shadow: 0 6px 14px rgba(0,0,0,0.24);
+}
+#sendBtn i { font-size: 14px; }
+#showPromptBtn[disabled] {
+  opacity: .45;
+  cursor: not-allowed;
+  border-color: var(--line);
+  color: var(--dim);
+}
 
 /* ── Prompt preview bar ─────────────────────── */
 .prompt-bar {
   font-size: 11px; color: var(--muted); font-family: var(--mono);
   background: var(--bg3); border: 1px solid var(--line);
   border-radius: var(--radius); padding: 6px 10px;
-  margin-bottom: 10px; line-height: 1.6;
+  margin-bottom: 0; line-height: 1.6;
   display: none; align-items: flex-start; gap: 6px;
 }
 .prompt-bar .plabel { color: var(--accent); white-space: nowrap; }
 .prompt-bar #promptText { flex: 1; word-break: break-word; }
+
+/* Prompt modal */
+.prompt-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.72);
+  z-index: 1004;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.prompt-modal-card {
+  width: min(920px, 96vw);
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg2);
+  border: 1px solid var(--line2);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.prompt-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg3);
+}
+.prompt-modal-title {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+}
+.prompt-modal-body {
+  padding: 14px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+}
 
 /* ── Side panel ─────────────────────────────── */
 .side { background: var(--bg2); border-left: 1px solid var(--line); display: flex; flex-direction: column; overflow: hidden; }
@@ -326,6 +411,38 @@ textarea#userInput::placeholder { color: var(--dim); }
 .sbar-neg { background: var(--red); }
 .sval { font-size: 10px; color: var(--muted); min-width: 28px; text-align: right; font-family: var(--mono); }
 
+.style-pick-tip {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.style-pick-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.style-chip {
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line2);
+  background: var(--bg3);
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all .12s;
+}
+.style-chip:hover { border-color: var(--accent); color: var(--text); }
+.style-chip.on {
+  border-color: var(--accent);
+  background: var(--acl);
+  color: var(--accent);
+}
+.style-pick-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 9px;
+}
+
 .ref-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 4px; }
 .ref-item { aspect-ratio: 4/3; border-radius: var(--radius); background: var(--bg3); border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .ref-item img { width: 100%; height: 100%; object-fit: cover; }
@@ -362,16 +479,10 @@ textarea#userInput::placeholder { color: var(--dim); }
   .workspace { grid-template-columns: 1fr; }
   .side-resizer { display: none; }
   .side { border-left: none; border-top: 1px solid var(--line); }
-  .composer-main {
-    grid-template-columns: 1fr;
-  }
-  .composer-actions {
-    flex-direction: row;
-    min-width: 0;
-  }
-  .composer-actions > button {
-    flex: 1;
-  }
+  textarea#userInput { padding-right: 126px; padding-bottom: 46px; }
+  .composer-actions { right: 8px; bottom: 8px; gap: 6px; }
+  #polishBtn { padding: 0 8px; font-size: 10px; }
+  #sendBtn { padding: 0 10px; }
 }
 
 /* ── Toast ──────────────────────────────────── */
@@ -426,31 +537,34 @@ textarea#userInput::placeholder { color: var(--dim); }
         <div class="footer-resizer" id="footerResizeHandle"></div>
         <div class="footer-content">
           <div class="prompt-bar" id="promptBar" style="display:none">
-          <span class="plabel">Prompt →</span><span id="promptText"></span>
-          <button style="margin-left:8px;padding:2px 6px;font-size:10px;background:var(--bg4);border:1px solid var(--line2);border-radius:4px;cursor:pointer;color:var(--muted)" onclick="hidePromptBar()">收起</button>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <button id="showPromptBtn" style="padding:2px 8px;font-size:10px;background:transparent;border:1px solid var(--line2);border-radius:4px;cursor:pointer;color:var(--muted);display:none" onclick="showPromptBar()">查看完整 Prompt</button>
-          <div id="polishStatus" style="font-size:11px;color:var(--muted);display:none">
-            <span id="polishStatusText"></span>
-            <button style="margin-left:8px;padding:2px 6px;font-size:10px;background:var(--bg4);border:1px solid var(--line2);border-radius:4px;cursor:pointer;color:var(--text)" onclick="cancelPolish()">取消润色</button>
-            <button style="margin-left:4px;padding:2px 6px;font-size:10px;background:var(--bg4);border:1px solid var(--line2);border-radius:4px;cursor:pointer;color:var(--text)" onclick="rePolish()">重新润色</button>
+            <span class="plabel">Prompt →</span><span id="promptText"></span>
+            <button class="mini-btn ghost" onclick="hidePromptBar()">收起</button>
           </div>
-        </div>
-        <div class="input-row">
-          <div class="input-wrap" style="display:flex;flex-direction:column">
-            <textarea id="userInput" placeholder="描述你的设计需求或改进方向…" rows="2"
-              onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();generate()}"></textarea>
+          <div class="composer-meta">
+            <button id="showPromptBtn" class="mini-btn ghost" onclick="showPromptBar()" disabled>暂无 Prompt</button>
+            <div id="polishStatus" class="polish-status" style="display:none">
+              <span id="polishStatusText"></span>
+              <button class="mini-btn" onclick="cancelPolish()">取消润色</button>
+              <button class="mini-btn" onclick="rePolish()">重新润色</button>
+            </div>
           </div>
-          <div style="display:flex;flex-direction:column;gap:4px">
-            <button id="polishBtn" onclick="polishPrompt()" style="padding:6px 14px;border-radius:var(--radius);background:var(--bg3);color:var(--muted);border:1px solid var(--line2);font-size:11px;cursor:pointer;white-space:nowrap;transition:all .15s">
-              <i class="ti ti-magic"></i> 润色
-            </button>
-            <button class="send-btn" id="sendBtn" onclick="generate()" style="padding:6px 14px">
-              <i class="ti ti-sparkles"></i> 生成
-            </button>
+          <div class="input-row composer-main">
+            <div class="input-wrap composer-input">
+              <textarea id="userInput" placeholder="描述你的设计需求或改进方向…" rows="2"
+                onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();generate()}"></textarea>
+              <div class="composer-actions">
+                <button id="voiceBtn" onclick="startVoiceInput()">
+                  🎤 语音
+                </button>
+                <button id="polishBtn" onclick="polishPrompt()">
+                  润色
+                </button>
+                <button class="send-btn" id="sendBtn" onclick="generate()">
+                  生成
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
         </div>
       </div>
     </div>
@@ -485,6 +599,13 @@ textarea#userInput::placeholder { color: var(--dim); }
         <div class="panel" id="tabStyle">
           <div class="sec">风格偏好（自动学习）</div>
           <div id="styleContainer"></div>
+          <div class="sec" style="margin-top:14px">风格选择（勾选=要，未勾选=不要）</div>
+          <div class="style-pick-tip">点击后再点“应用选择”。未勾选标签会被视为“不要”。</div>
+          <div id="stylePicker" class="style-pick-grid"></div>
+          <div class="style-pick-actions">
+            <button class="mini-btn ghost" onclick="resetStyleSelection()">清空勾选</button>
+            <button class="mini-btn" onclick="applyStyleSelection()">应用选择</button>
+          </div>
           <div class="sec" style="margin-top:14px">参考图</div>
           <div class="ref-grid" id="refGrid"></div>
           <button class="upload-ref-btn" onclick="document.getElementById('refUpload').click()"><i class="ti ti-plus"></i> 添加参考图</button>
@@ -585,19 +706,28 @@ textarea#userInput::placeholder { color: var(--dim); }
   </div>
 </div>
 
+<!-- Prompt Modal -->
+<div id="promptModal" class="prompt-modal" onclick="if(event.target===this)hidePromptBar()">
+  <div class="prompt-modal-card">
+    <div class="prompt-modal-head">
+      <div class="prompt-modal-title">完整 Prompt</div>
+      <button class="mini-btn" onclick="hidePromptBar()">关闭</button>
+    </div>
+    <div class="prompt-modal-body" id="promptModalText">暂无 Prompt</div>
+  </div>
+</div>
+
 <!-- Image Viewer Modal -->
 <div id="imageViewerModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.85);z-index:1002;align-items:center;justify-content:center">
   <button style="position:absolute;top:16px;right:16px;width:36px;height:36px;background:var(--bg4);border:1px solid var(--line2);border-radius:50%;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:20px" onclick="hideImageViewer()">
     ✕
   </button>
-  <img id="viewerImage" style="max-width:90vw;max-height:85vh;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.5)">
-  <div style="position:absolute;bottom:20px;display:flex;gap:10px">
-    <button id="viewerSelectBtn" style="padding:8px 20px;background:var(--accent);border:none;border-radius:6px;color:var(--bg);font-size:12px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:6px" onclick="selectFromViewer()">
-      <i class="ti ti-check"></i> 选择
-    </button>
-    <button style="padding:8px 20px;background:var(--bg4);border:1px solid var(--line2);border-radius:6px;color:var(--text);font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px" onclick="downloadFromViewer()">
-      <i class="ti ti-download"></i> 下载
-    </button>
+  <div style="position:relative;max-width:90vw;max-height:85vh">
+    <img id="viewerImage" style="max-width:90vw;max-height:85vh;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.5)">
+    <div style="position:absolute;bottom:12px;right:12px;display:flex;gap:8px">
+      <button id="viewerSelectBtn" style="padding:6px 14px;background:var(--accent);border:none;border-radius:6px;color:var(--bg);font-size:12px;font-weight:500;cursor:pointer" onclick="selectFromViewer()">选择</button>
+      <button style="padding:6px 14px;background:var(--bg4);border:1px solid var(--line2);border-radius:6px;color:var(--text);font-size:12px;cursor:pointer" onclick="downloadFromViewer()">下载</button>
+    </div>
   </div>
 </div>
 
@@ -612,6 +742,9 @@ let currentImageModel = 'gpt-image-1';
 let currentTextPlatform = 'deepseek';
 let currentTextModel = 'deepseek-chat';
 let sideWidth = parseInt(localStorage.getItem('archai_side_width') || '288', 10);
+let currentPromptText = '';
+let styleCandidatePool = [];
+let styleSelectedSet = new Set();
 
 // Persistence keys
 const STATE_KEY = 'archai_session_path';
@@ -1048,7 +1181,8 @@ async function polishPrompt() {
     // 显示润色状态
     const statusEl = document.getElementById('polishStatus');
     const statusTextEl = document.getElementById('polishStatusText');
-    statusEl.style.display = 'block';
+    statusEl.style.display = 'flex';
+    syncComposerTextareaHeight();
     if (data.optimized === false) {
       statusTextEl.textContent = '已使用路径记忆拼接（AI润色不可用）';
       statusTextEl.style.color = 'var(--muted)';
@@ -1071,6 +1205,7 @@ function cancelPolish() {
   const inputEl = document.getElementById('userInput');
   inputEl.value = originalInput;
   document.getElementById('polishStatus').style.display = 'none';
+  syncComposerTextareaHeight();
   polishedInput = '';
   toast('已取消润色');
 }
@@ -1092,19 +1227,30 @@ function applySideWidth(width) {
 // ── Footer resize ─────────────────────────────
 let footerHeight = parseInt(localStorage.getItem('archai_footer_height') || '180', 10);
 
+function syncComposerTextareaHeight() {
+  const content = document.querySelector('.footer-content');
+  const inputRow = content?.querySelector('.input-row');
+  const textarea = document.getElementById('userInput');
+  if (!content || !inputRow || !textarea) return;
+
+  const gap = parseFloat(getComputedStyle(content).gap || '0') || 0;
+  const visibleChildren = Array.from(content.children).filter((child) => child.offsetParent !== null);
+  const nonInputHeight = visibleChildren
+    .filter((child) => child !== inputRow)
+    .reduce((sum, child) => sum + child.getBoundingClientRect().height, 0);
+  const gapTotal = Math.max(0, visibleChildren.length - 1) * gap;
+  const available = content.clientHeight - nonInputHeight - gapTotal;
+
+  const textareaHeight = Math.max(64, Math.min(350, Math.floor(available)));
+  textarea.style.height = `${textareaHeight}px`;
+}
+
 function applyFooterHeight(height) {
-  const clamped = Math.max(100, Math.min(400, Math.round(height)));
+  const clamped = Math.max(130, Math.min(400, Math.round(height)));
   footerHeight = clamped;
   const footer = document.querySelector('.footer');
   if (footer) footer.style.height = clamped + 'px';
-  
-  // 根据footer高度计算textarea高度
-  // 按钮区域固定约50px，gap 6px，padding 12px，resizer 6px
-  // textarea高度 = footer高度 - 固定区域(74px)
-  const textareaHeight = Math.max(30, Math.min(350, clamped - 74));
-  const textarea = document.getElementById('userInput');
-  if (textarea) textarea.style.height = textareaHeight + 'px';
-  
+  syncComposerTextareaHeight();
   localStorage.setItem('archai_footer_height', String(clamped));
 }
 
@@ -1167,6 +1313,89 @@ function downloadFromViewer() {
   a.href = viewerImageUrl;
   a.download = viewerImageUrl.split('/').pop() || 'image.png';
   a.click();
+}
+
+// ── Voice input ───────────────────────────────
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecording = false;
+
+async function startVoiceInput() {
+  const btn = document.getElementById('voiceBtn');
+  
+  if (!isRecording) {
+    // 开始录音
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      audioChunks = [];
+      
+      mediaRecorder.ondataavailable = (e) => {
+        audioChunks.push(e.data);
+      };
+      
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        await sendAudioToServer(audioBlob);
+        stream.getTracks().forEach(track => track.stop());
+      };
+      
+      mediaRecorder.start();
+      isRecording = true;
+      btn.textContent = '⏹ 停止';
+      btn.style.background = 'var(--red)';
+      btn.style.color = '#fff';
+      toast('开始录音...');
+    } catch (err) {
+      toast('无法访问麦克风: ' + err.message);
+    }
+  } else {
+    // 停止录音
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+    }
+    isRecording = false;
+    btn.textContent = '🎤 语音';
+    btn.style.background = 'var(--bg3)';
+    btn.style.color = 'var(--muted)';
+  }
+}
+
+async function sendAudioToServer(audioBlob) {
+  const formData = new FormData();
+  formData.append('audio', audioBlob, 'recording.webm');
+  
+  const btn = document.getElementById('voiceBtn');
+  btn.textContent = '⏳ 识别中';
+  btn.disabled = true;
+  
+  try {
+    const res = await fetch('/api/transcribe', {
+      method: 'POST',
+      body: formData
+    });
+    
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || '语音识别失败');
+    }
+    
+    const data = await res.json();
+    const text = data.text || '';
+    
+    // 将识别结果添加到输入框
+    const input = document.getElementById('userInput');
+    const currentText = input.value.trim();
+    input.value = currentText ? currentText + ' ' + text : text;
+    saveInput();
+    
+    toast('语音识别完成');
+  } catch (err) {
+    toast('识别失败: ' + err.message);
+  } finally {
+    btn.textContent = '🎤 语音';
+    btn.disabled = false;
+  }
 }
 
 function initSideResize() {
@@ -1240,15 +1469,26 @@ async function refreshState() {
   renderHistory(s.history, s.save_path);
   renderPicked(s.history);
   renderStyle(s.style_summary, s.ref_images);
+  renderStylePicker(s.style_candidates || []);
   renderImages(s.current_images || [], s.current_selected || null);
 
+  const showPromptBtn = document.getElementById('showPromptBtn');
   if (s.current_prompt) {
+    currentPromptText = s.current_prompt;
     document.getElementById('promptText').textContent = s.current_prompt;
-    document.getElementById('showPromptBtn').style.display = 'inline-block';
+    document.getElementById('promptModalText').textContent = s.current_prompt;
+    showPromptBtn.disabled = false;
+    showPromptBtn.textContent = '查看完整 Prompt';
   } else {
+    currentPromptText = '';
+    document.getElementById('promptText').textContent = '';
+    document.getElementById('promptModalText').textContent = '暂无 Prompt';
     document.getElementById('promptBar').style.display = 'none';
-    document.getElementById('showPromptBtn').style.display = 'none';
+    showPromptBtn.disabled = true;
+    showPromptBtn.textContent = '暂无 Prompt';
+    hidePromptBar();
   }
+  syncComposerTextareaHeight();
   
   // Save to localStorage
   if (s.save_path) {
@@ -1267,13 +1507,16 @@ function handleProjBtn() {
 
 // ── Prompt bar ────────────────────────────────
 function showPromptBar() {
-  document.getElementById('promptBar').style.display = 'flex';
-  document.getElementById('showPromptBtn').style.display = 'none';
+  if (!currentPromptText) {
+    toast('当前节点暂无 Prompt');
+    return;
+  }
+  document.getElementById('promptModalText').textContent = currentPromptText;
+  document.getElementById('promptModal').style.display = 'flex';
 }
 
 function hidePromptBar() {
-  document.getElementById('promptBar').style.display = 'none';
-  document.getElementById('showPromptBtn').style.display = 'inline-block';
+  document.getElementById('promptModal').style.display = 'none';
 }
 
 // ── Generate ──────────────────────────────────
@@ -1291,7 +1534,11 @@ async function generate() {
   // Show loading placeholders
   showLoadingCards(currentN);
   document.getElementById('promptBar').style.display = 'none';
-  document.getElementById('showPromptBtn').style.display = 'none';
+  hidePromptBar();
+  currentPromptText = '';
+  const showPromptBtn = document.getElementById('showPromptBtn');
+  showPromptBtn.disabled = true;
+  showPromptBtn.textContent = '暂无 Prompt';
 
   try {
     // 直接使用输入框内容，不再后端润色（用户已在前端润色）
@@ -1313,6 +1560,8 @@ async function generate() {
     await res.json();
     document.getElementById('userInput').value = '';
     document.getElementById('polishStatus').style.display = 'none';
+    currentPromptText = '';
+    syncComposerTextareaHeight();
     selectedImageUrl = null;
     originalInput = '';
     polishedInput = '';
@@ -1582,7 +1831,7 @@ function renderStyle(styles, refImages) {
       return `<div class="style-row">
         <span class="skey">${s.keyword}</span>
         <div class="sbar-bg"><div class="sbar-fill ${pos ? 'sbar-pos' : 'sbar-neg'}" style="width:${pct}%"></div></div>
-        <span class="sval">${s.weight > 0 ? '+' : ''}${s.weight.toFixed(1)}</span>
+        <span class="sval">${pos ? '要' : '不要'} ${s.weight > 0 ? '+' : ''}${s.weight.toFixed(1)}</span>
       </div>`;
     }).join('');
   }
@@ -1595,6 +1844,78 @@ function renderStyle(styles, refImages) {
       `<div class="ref-item"><img src="${r.path}" alt="${r.label}" title="${r.label}"></div>`
     ).join('');
   }
+}
+
+function renderStylePicker(candidates) {
+  const box = document.getElementById('stylePicker');
+  if (!box) return;
+
+  const list = Array.isArray(candidates) ? candidates : [];
+  styleCandidatePool = list
+    .map(item => (typeof item === 'string' ? item : (item && item.keyword)))
+    .filter(Boolean);
+
+  if (!styleCandidatePool.length) {
+    box.innerHTML = '<div class="picked-empty">暂无可选风格</div>';
+    styleSelectedSet = new Set();
+    return;
+  }
+
+  const selectedByWeight = new Set(
+    list
+      .filter(item => item && item.state === 'prefer')
+      .map(item => item.keyword)
+  );
+
+  const nextSet = new Set();
+  for (const kw of styleCandidatePool) {
+    if (styleSelectedSet.has(kw) || selectedByWeight.has(kw)) {
+      nextSet.add(kw);
+    }
+  }
+  styleSelectedSet = nextSet;
+
+  box.innerHTML = '';
+  for (const kw of styleCandidatePool) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'style-chip' + (styleSelectedSet.has(kw) ? ' on' : '');
+    btn.textContent = kw;
+    btn.addEventListener('click', () => {
+      if (styleSelectedSet.has(kw)) styleSelectedSet.delete(kw);
+      else styleSelectedSet.add(kw);
+      btn.classList.toggle('on');
+    });
+    box.appendChild(btn);
+  }
+}
+
+function resetStyleSelection() {
+  styleSelectedSet = new Set();
+  renderStylePicker(styleCandidatePool.map(keyword => ({keyword, state: 'neutral'})));
+}
+
+async function applyStyleSelection() {
+  if (!styleCandidatePool.length) {
+    toast('暂无可应用的风格标签');
+    return;
+  }
+  const selected = Array.from(styleSelectedSet);
+  const res = await fetch('/api/style/select', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      candidate_keywords: styleCandidatePool,
+      selected_keywords: selected
+    })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    toast('应用风格选择失败: ' + (err.detail || res.status));
+    return;
+  }
+  toast('风格偏好已应用（未勾选视为不要）');
+  await refreshState();
 }
 
 // ── Load session ──────────────────────────────

@@ -28,6 +28,7 @@ state_manager.py — 设计状态树核心管理器
 import json
 import uuid
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -133,7 +134,7 @@ def select_image(session: dict, image_url: str) -> None:
     if image_url not in valid_urls:
         raise ValueError("只能选择当前节点下的图片")
     node["selected"] = image_url
-    _update_style_weights(session, image_url, node["prompt"])
+    _update_style_weights(session, node, image_url)
     _save(session)
 
 
@@ -255,23 +256,253 @@ STYLE_KEYWORDS = [
     "高层", "低层", "商业", "住宅", "文化",
 ]
 
-def _update_style_weights(session: dict, selected_url: str, selected_prompt: str) -> None:
+STYLE_ALIASES = {
+    "现代": ["现代", "现代风", "modern", "contemporary"],
+    "简约": ["简约", "极简", "minimal", "minimalist"],
+    "古典": ["古典", "classic", "classical"],
+    "新古典": ["新古典", "neoclassical", "neo classical"],
+    "巴洛克": ["巴洛克", "baroque"],
+    "工业风": ["工业风", "industrial"],
+    "未来主义": ["未来主义", "futuristic", "future"],
+    "玻璃幕墙": ["玻璃幕墙", "curtain wall", "glass facade"],
+    "混凝土": ["混凝土", "concrete"],
+    "木材": ["木材", "木质", "wood"],
+    "钢结构": ["钢结构", "steel structure", "steel frame"],
+    "砖石": ["砖石", "brick", "masonry"],
+    "自然采光": ["自然采光", "natural light", "daylight"],
+    "大出挑": ["大出挑", "large cantilever", "deep overhang"],
+    "悬挑": ["悬挑", "cantilever", "overhang"],
+    "绿化": ["绿化", "landscape", "greenery"],
+    "屋顶花园": ["屋顶花园", "roof garden", "rooftop garden"],
+    "对称": ["对称", "symmetry", "symmetrical"],
+    "非对称": ["非对称", "asymmetry", "asymmetrical"],
+    "曲线": ["曲线", "curved", "curve"],
+    "直线": ["直线", "straight line", "linear"],
+    "几何": ["几何", "geometric", "geometry"],
+    "暖色调": ["暖色调", "warm tone", "warm color"],
+    "冷色调": ["冷色调", "cool tone", "cool color"],
+    "白色": ["白色", "white"],
+    "灰色": ["灰色", "gray", "grey"],
+    "黄昏": ["黄昏", "dusk", "sunset"],
+    "夜景": ["夜景", "night scene", "night"],
+    "晴天": ["晴天", "sunny", "clear sky"],
+    "鸟瞰": ["鸟瞰", "aerial view", "bird view", "bird's-eye"],
+    "透视": ["透视", "perspective"],
+    "高层": ["高层", "high-rise", "tower"],
+    "低层": ["低层", "low-rise"],
+    "商业": ["商业", "commercial"],
+    "住宅": ["住宅", "residential"],
+    "文化": ["文化", "cultural"],
+}
+
+NEGATION_CUES = [
+    "不要", "不需要", "不要再", "别", "避免", "拒绝", "去掉", "取消", "不想要",
+    "without", "avoid", "no ", "not ",
+]
+
+STYLE_WEIGHT_MIN = -2.0
+STYLE_WEIGHT_MAX = 2.0
+STYLE_DECAY_FACTOR = 0.98
+EPS = 0.03
+
+
+def _update_style_weights(session: dict, node: dict, selected_url: str) -> None:
     """
-    用户每次选图，从该图的prompt中提取关键词，对应权重 +0.2。
-    未被选中图片的权重不变（我们不知道用户为什么不选）。
+    自动风格学习（改进版）：
+    1) 选中图相关描述做正向学习；
+    2) 用户输入中的“不要/避免”做负向学习；
+    3) 对未选中的候选图做轻微对比降权；
+    4) 所有权重做轻微衰减，避免早期偏好长期锁死。
     """
-    weights = session["style_weights"]
-    for kw in STYLE_KEYWORDS:
-        if kw in selected_prompt:
-            weights[kw] = round(weights.get(kw, 0.0) + 0.2, 2)
+    weights = session.get("style_weights", {})
+    _decay_style_weights(weights)
+
+    selected_img = None
+    for img in node.get("images", []):
+        if isinstance(img, dict) and img.get("url") == selected_url:
+            selected_img = img
+            break
+
+    selected_text_parts = [
+        node.get("user_input", ""),
+        node.get("prompt", ""),
+        (selected_img or {}).get("revised_prompt", ""),
+    ]
+    selected_text = " ".join(x for x in selected_text_parts if x)
+    selected_scores = _extract_style_scores(selected_text)
+
+    # 选中图正向强化；若描述里本身带否定，也会得到负向强化
+    for kw, score in selected_scores.items():
+        if score > 0:
+            _bump_style_weight(weights, kw, 0.24 * min(score, 3))
+        elif score < 0:
+            _bump_style_weight(weights, kw, -0.24 * min(abs(score), 3))
+
+    # 用户明确“不要/避免”的风格应强力降权，优先级高于一般正向
+    user_scores = _extract_style_scores(node.get("user_input", ""))
+    for kw, score in user_scores.items():
+        if score < 0:
+            _bump_style_weight(weights, kw, -0.40 * min(abs(score), 3))
+        elif score > 0:
+            _bump_style_weight(weights, kw, 0.12 * min(score, 2))
+
+    # 对比学习：未选中图中的独有风格，做轻微降权
+    other_text = " ".join(
+        img.get("revised_prompt", "")
+        for img in node.get("images", [])
+        if isinstance(img, dict) and img.get("url") and img.get("url") != selected_url
+    )
+    other_scores = _extract_style_scores(other_text)
+    selected_positive = {k for k, v in selected_scores.items() if v > 0}
+    other_positive = {k for k, v in other_scores.items() if v > 0}
+    for kw in selected_positive - other_positive:
+        _bump_style_weight(weights, kw, 0.08)
+    for kw in other_positive - selected_positive:
+        _bump_style_weight(weights, kw, -0.06)
+
     session["style_weights"] = weights
 
 
+def apply_style_selection(session: dict, candidate_keywords: list[str], selected_keywords: list[str]) -> None:
+    """
+    用户手动风格选择：
+    - 勾选 = 要（正向加权）
+    - 未勾选 = 不要（负向加权）
+    """
+    candidate = [kw for kw in candidate_keywords if kw in STYLE_KEYWORDS]
+    if not candidate:
+        return
+
+    selected = {kw for kw in selected_keywords if kw in candidate}
+    weights = session.get("style_weights", {})
+    _decay_style_weights(weights)
+
+    for kw in candidate:
+        if kw in selected:
+            _bump_style_weight(weights, kw, 0.45)
+        else:
+            _bump_style_weight(weights, kw, -0.30)
+
+    session["style_weights"] = weights
+    _save(session)
+
+
 def get_style_summary(session: dict, top_n: int = 6) -> list[dict]:
-    """返回权重最高的N个风格词，供前端展示。"""
-    weights = session["style_weights"]
-    sorted_kw = sorted(weights.items(), key=lambda x: x[1], reverse=True)
-    return [{"keyword": k, "weight": v} for k, v in sorted_kw[:top_n]]
+    """按绝对权重返回风格偏好摘要（包含“要”和“不要”）。"""
+    weights = session.get("style_weights", {})
+    sorted_kw = sorted(weights.items(), key=lambda x: abs(x[1]), reverse=True)
+    out = []
+    for k, v in sorted_kw:
+        if abs(v) < EPS:
+            continue
+        out.append({
+            "keyword": k,
+            "weight": round(v, 2),
+            "tendency": "prefer" if v >= 0 else "avoid",
+        })
+        if len(out) >= top_n:
+            break
+    return out
+
+
+def get_style_candidates(session: dict, top_n: int = 14) -> list[dict]:
+    """
+    返回可供用户勾选的风格候选词：
+    综合当前路径文本命中 + 已学习权重。
+    """
+    weights = session.get("style_weights", {})
+    path = get_path_to_root(session)
+
+    score_map: dict[str, float] = {}
+    for node in path[-6:]:
+        text = " ".join([
+            node.get("user_input", ""),
+            node.get("prompt", ""),
+            (_get_selected_image(node) or {}).get("revised_prompt", ""),
+        ])
+        for kw, score in _extract_style_scores(text).items():
+            score_map[kw] = score_map.get(kw, 0.0) + abs(float(score))
+
+    for kw, w in weights.items():
+        score_map[kw] = score_map.get(kw, 0.0) + abs(float(w)) * 1.6
+
+    ranked = [k for k, _ in sorted(score_map.items(), key=lambda x: x[1], reverse=True)]
+    defaults = ["现代", "简约", "工业风", "玻璃幕墙", "混凝土", "木材", "自然采光", "夜景", "鸟瞰", "透视", "商业", "住宅"]
+
+    candidates: list[str] = []
+    for kw in ranked + defaults + STYLE_KEYWORDS:
+        if kw not in STYLE_KEYWORDS or kw in candidates:
+            continue
+        candidates.append(kw)
+        if len(candidates) >= top_n:
+            break
+
+    return [{
+        "keyword": kw,
+        "weight": round(float(weights.get(kw, 0.0)), 2),
+        "state": "prefer" if weights.get(kw, 0.0) > EPS else ("avoid" if weights.get(kw, 0.0) < -EPS else "neutral"),
+    } for kw in candidates]
+
+
+def _decay_style_weights(weights: dict, factor: float = STYLE_DECAY_FACTOR) -> None:
+    to_delete = []
+    for kw, v in weights.items():
+        nv = float(v) * factor
+        if abs(nv) < EPS:
+            to_delete.append(kw)
+        else:
+            weights[kw] = round(nv, 3)
+    for kw in to_delete:
+        weights.pop(kw, None)
+
+
+def _bump_style_weight(weights: dict, keyword: str, delta: float) -> None:
+    cur = float(weights.get(keyword, 0.0))
+    nxt = max(STYLE_WEIGHT_MIN, min(STYLE_WEIGHT_MAX, cur + float(delta)))
+    if abs(nxt) < EPS:
+        weights.pop(keyword, None)
+    else:
+        weights[keyword] = round(nxt, 3)
+
+
+def _extract_style_scores(text: str) -> dict[str, int]:
+    """
+    从文本提取风格词并判断正负倾向。
+    命中“不要/避免/without/avoid”等否定前缀时记为负分。
+    """
+    norm = _normalize_text(text)
+    if not norm:
+        return {}
+
+    scores: dict[str, int] = {}
+    for kw in STYLE_KEYWORDS:
+        patterns = STYLE_ALIASES.get(kw, [kw])
+        score = 0
+        for token in patterns:
+            token_norm = _normalize_text(token).strip()
+            if not token_norm:
+                continue
+            start = 0
+            while True:
+                idx = norm.find(token_norm, start)
+                if idx < 0:
+                    break
+                prefix = norm[max(0, idx - 12):idx]
+                is_neg = any(cue in prefix for cue in NEGATION_CUES)
+                score += -1 if is_neg else 1
+                start = idx + len(token_norm)
+        if score != 0:
+            scores[kw] = score
+    return scores
+
+
+def _normalize_text(text: str) -> str:
+    if not text:
+        return ""
+    s = str(text).lower()
+    s = re.sub(r"[，,。.!！？;；:：()（）\[\]{}<>\"'`~\-_/\\]+", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
 
 
 # ─────────────────────────────────────────────

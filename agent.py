@@ -269,8 +269,14 @@ def compose_prompt_from_context(context: dict) -> str:
     memory_prompts = [h.get("prompt_used", "").strip() for h in history if h.get("prompt_used")]
     selected_revised = [x.get("revised_prompt", "").strip() for x in selected_images if x.get("revised_prompt")]
 
-    top_styles = sorted(style_weights.items(), key=lambda x: x[1], reverse=True)[:6]
-    top_styles = [k for k, v in top_styles if v >= 0.3]
+    preferred_styles = [
+        k for k, v in sorted(style_weights.items(), key=lambda x: x[1], reverse=True)
+        if v >= 0.3
+    ][:6]
+    avoided_styles = [
+        k for k, v in sorted(style_weights.items(), key=lambda x: x[1])
+        if v <= -0.3
+    ][:6]
 
     parts = []
     # 模型记忆优先添加
@@ -282,8 +288,10 @@ def compose_prompt_from_context(context: dict) -> str:
         parts.append("Established visual decisions: " + " | ".join(memory_prompts[-3:]) + ".")
     if selected_revised:
         parts.append("Selected image references to preserve: " + " | ".join(selected_revised[-4:]) + ".")
-    if top_styles:
-        parts.append("Preferred style cues: " + ", ".join(top_styles) + ".")
+    if preferred_styles:
+        parts.append("Preferred style cues: " + ", ".join(preferred_styles) + ".")
+    if avoided_styles:
+        parts.append("Avoid these style cues: " + ", ".join(avoided_styles) + ".")
     if new_user_input:
         parts.append("New refinement request: " + new_user_input + ".")
 
@@ -332,7 +340,7 @@ def _format_selected_images(selected_images: list) -> str:
 def _format_weights(weights: dict) -> str:
     if not weights:
         return "暂无"
-    top = sorted(weights.items(), key=lambda x: x[1], reverse=True)[:6]
+    top = sorted(weights.items(), key=lambda x: abs(x[1]), reverse=True)[:8]
     return "、".join(f"{k}({v:+.1f})" for k, v in top)
 
 

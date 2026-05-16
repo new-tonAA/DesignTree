@@ -146,6 +146,7 @@ def get_state():
         "current_node":  s["current_node"],
         "tree":          sm.get_tree_for_ui(s),
         "style_summary": sm.get_style_summary(s),
+        "style_candidates": sm.get_style_candidates(s),
         "ref_images":    s["reference_images"],
         "save_path":     s["save_path"],
         "history":       _history_for_ui(s),
@@ -259,6 +260,22 @@ def select_image(req: SelectImageReq):
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"ok": True, "style_summary": sm.get_style_summary(s)}
+
+
+class StyleSelectReq(BaseModel):
+    candidate_keywords: list[str]
+    selected_keywords: list[str]
+
+
+@app.post("/api/style/select")
+def style_select(req: StyleSelectReq):
+    s = _require_session()
+    sm.apply_style_selection(s, req.candidate_keywords, req.selected_keywords)
+    return {
+        "ok": True,
+        "style_summary": sm.get_style_summary(s),
+        "style_candidates": sm.get_style_candidates(s),
+    }
 
 
 # ── 切换节点 ─────────────────────────────────
