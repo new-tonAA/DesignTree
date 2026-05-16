@@ -628,4 +628,4 @@ if __name__ == "__main__":
     threading.Thread(target=open_browser, daemon=True).start()
 
     print("\n  ArchAI Design Studio → http://localhost:8000\n")
-    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=False)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
