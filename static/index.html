@@ -1709,17 +1709,35 @@ async function startVoiceInput() {
       };
       
       recognition.onerror = (event) => {
-        if (event.error !== 'no-speech') {
-          toast('语音识别错误: ' + event.error);
+        // 静默处理常见错误，只对严重错误提示
+        const silentErrors = ['no-speech', 'audio-capture', 'aborted', 'network'];
+        if (!silentErrors.includes(event.error)) {
+          console.log('语音识别错误:', event.error);
+          if (event.error === 'not-allowed') {
+            toast('请允许麦克风权限');
+            stopVoiceInput();
+          }
         }
       };
-      
+
+      let retryCount = 0;
+      const maxRetries = 3;
+
       recognition.onend = () => {
         if (isRecording) {
           // 自动重启（用户没有手动停止）
-          try {
-            recognition.start();
-          } catch (e) {}
+          retryCount++;
+          if (retryCount <= maxRetries) {
+            try {
+              recognition.start();
+            } catch (e) {
+              console.log('重启语音识别失败:', e);
+            }
+          } else {
+            // 超过重试次数，停止
+            stopVoiceInput();
+            toast('语音识别已停止，请重新点击开始');
+          }
         }
       };
       
@@ -1733,22 +1751,26 @@ async function startVoiceInput() {
       toast('无法启动语音识别: ' + err.message);
     }
   } else {
-    // 停止录音
-    if (recognition) {
-      isRecording = false;
-      recognition.stop();
-      recognition = null;
-    }
-    btn.textContent = '🎤 语音';
-    btn.style.background = 'var(--bg3)';
-    btn.style.color = 'var(--text)';
-    
-    // 清理末尾空格
-    const input = document.getElementById('userInput');
-    input.value = input.value.trim();
-    saveInput();
-    toast('语音输入结束');
+    stopVoiceInput();
   }
+}
+
+function stopVoiceInput() {
+  const btn = document.getElementById('voiceBtn');
+  if (recognition) {
+    isRecording = false;
+    recognition.stop();
+    recognition = null;
+  }
+  btn.textContent = '🎤 语音';
+  btn.style.background = 'var(--bg3)';
+  btn.style.color = 'var(--text)';
+
+  // 清理末尾空格
+  const input = document.getElementById('userInput');
+  input.value = input.value.trim();
+  saveInput();
+  toast('语音输入结束');
 }
 
 // ── Prompt images ─────────────────────────────
