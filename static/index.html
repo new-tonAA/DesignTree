@@ -663,10 +663,10 @@ textarea#userInput::placeholder { color: var(--dim); }
                   📷 图片
                 </button>
                 <button id="voiceBtn" class="toolbar-btn" onclick="startVoiceInput()">
-                  🎤 语音
+                  🎙 语音
                 </button>
                 <button id="polishBtn" class="toolbar-btn" onclick="polishPrompt()">
-                  润色
+                  ✨ 润色
                 </button>
                 <div id="polishStatus" class="polish-status" style="display:none">
                   <span id="polishStatusText"></span>
@@ -675,7 +675,7 @@ textarea#userInput::placeholder { color: var(--dim); }
                 </div>
               </div>
               <button class="send-btn toolbar-btn" id="sendBtn" onclick="generate()">
-                生成
+                🚀 生成
               </button>
             </div>
             <input type="file" id="promptImageUpload" accept="image/*" multiple style="display:none" onchange="handlePromptImages(this)">
@@ -857,23 +857,38 @@ textarea#userInput::placeholder { color: var(--dim); }
       <div style="display:flex;flex-direction:column;gap:8px">
         <div>
           <div style="font-size:11px;color:var(--dim);margin-bottom:4px">OpenAI</div>
-          <input type="text" id="keyOpenAI" placeholder="sk-..." style="width:100%;padding:8px 10px;background:var(--bg3);border:1px solid var(--line2);border-radius:6px;color:var(--text);font-size:12px;outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--line2)'">
+          <div style="position:relative">
+            <input type="password" id="keyOpenAI" placeholder="sk-..." style="width:100%;padding:8px 32px 8px 10px;background:var(--bg3);border:1px solid var(--line2);border-radius:6px;color:var(--text);font-size:12px;outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--line2)'">
+            <button onclick="toggleKeyVisibility('keyOpenAI')" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);width:22px;height:22px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px">👁</button>
+          </div>
         </div>
         <div>
           <div style="font-size:11px;color:var(--dim);margin-bottom:4px">OpenRouter</div>
-          <input type="text" id="keyOpenRouter" placeholder="sk-or-..." style="width:100%;padding:8px 10px;background:var(--bg3);border:1px solid var(--line2);border-radius:6px;color:var(--text);font-size:12px;outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--line2)'">
+          <div style="position:relative">
+            <input type="password" id="keyOpenRouter" placeholder="sk-or-..." style="width:100%;padding:8px 32px 8px 10px;background:var(--bg3);border:1px solid var(--line2);border-radius:6px;color:var(--text);font-size:12px;outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--line2)'">
+            <button onclick="toggleKeyVisibility('keyOpenRouter')" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);width:22px;height:22px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px">👁</button>
+          </div>
         </div>
         <div>
           <div style="font-size:11px;color:var(--dim);margin-bottom:4px">V3.CM</div>
-          <input type="text" id="keyV3" placeholder="sk-..." style="width:100%;padding:8px 10px;background:var(--bg3);border:1px solid var(--line2);border-radius:6px;color:var(--text);font-size:12px;outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--line2)'">
+          <div style="position:relative">
+            <input type="password" id="keyV3" placeholder="sk-..." style="width:100%;padding:8px 32px 8px 10px;background:var(--bg3);border:1px solid var(--line2);border-radius:6px;color:var(--text);font-size:12px;outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--line2)'">
+            <button onclick="toggleKeyVisibility('keyV3')" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);width:22px;height:22px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px">👁</button>
+          </div>
         </div>
         <div>
           <div style="font-size:11px;color:var(--dim);margin-bottom:4px">DeepSeek</div>
-          <input type="text" id="keyDeepSeek" placeholder="sk-..." style="width:100%;padding:8px 10px;background:var(--bg3);border:1px solid var(--line2);border-radius:6px;color:var(--text);font-size:12px;outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--line2)'">
+          <div style="position:relative">
+            <input type="password" id="keyDeepSeek" placeholder="sk-..." style="width:100%;padding:8px 32px 8px 10px;background:var(--bg3);border:1px solid var(--line2);border-radius:6px;color:var(--text);font-size:12px;outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--line2)'">
+            <button onclick="toggleKeyVisibility('keyDeepSeek')" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);width:22px;height:22px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px">👁</button>
+          </div>
         </div>
         <div>
           <div style="font-size:11px;color:var(--dim);margin-bottom:4px">火山引擎</div>
-          <input type="text" id="keyVolcengine" placeholder="ark-..." style="width:100%;padding:8px 10px;background:var(--bg3);border:1px solid var(--line2);border-radius:6px;color:var(--text);font-size:12px;outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--line2)'">
+          <div style="position:relative">
+            <input type="password" id="keyVolcengine" placeholder="ark-..." style="width:100%;padding:8px 32px 8px 10px;background:var(--bg3);border:1px solid var(--line2);border-radius:6px;color:var(--text);font-size:12px;outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--line2)'">
+            <button onclick="toggleKeyVisibility('keyVolcengine')" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);width:22px;height:22px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px">👁</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1089,11 +1104,36 @@ async function autoCreateProject() {
   }
 }
 
+function getPlatformIcon(platform) {
+  const icons = {
+    'openai': '🤖',
+    'openrouter': '🔀',
+    'v3': '⚡',
+    'volcengine': '🌋',
+    'deepseek': '🔍'
+  };
+  return icons[platform] || '📡';
+}
+
+function getModelIcon(model) {
+  if (model.includes('banana') || model.includes('Banana')) return '🍌';
+  if (model.includes('gemini')) return '💎';
+  if (model.includes('gpt') || model.includes('GPT')) return '🧠';
+  if (model.includes('doubao')) return '🫛';
+  if (model.includes('claude')) return '🎭';
+  if (model.includes('stable') || model.includes('sd')) return '🎨';
+  return '';
+}
+
 function updatePlatformLabel() {
+  const imgIcon = getPlatformIcon(currentPlatform);
   const imgName = platformsData[currentPlatform]?.name || currentPlatform;
+  const imgModelIcon = getModelIcon(currentImageModel);
+  const txtIcon = getPlatformIcon(currentTextPlatform);
   const txtName = platformsData[currentTextPlatform]?.name || currentTextPlatform;
-  document.getElementById('imgPlatformLabel').textContent = `${imgName} · ${currentImageModel}`;
-  document.getElementById('txtPlatformLabel').textContent = `${txtName} · ${currentTextModel}`;
+  const txtModelIcon = getModelIcon(currentTextModel);
+  document.getElementById('imgPlatformLabel').textContent = `${imgIcon} ${imgName} · ${imgModelIcon}${currentImageModel}`;
+  document.getElementById('txtPlatformLabel').textContent = `${txtIcon} ${txtName} · ${txtModelIcon}${currentTextModel}`;
 }
 
 function showImgPlatformModal() {
@@ -1602,12 +1642,16 @@ function handlePromptImageFiles(files) {
 function renderPromptImages() {
   const container = document.getElementById('promptImagesPreview');
   const textarea = document.getElementById('userInput');
+  const footer = document.querySelector('.footer');
+
   if (!promptImages.length) {
     container.style.display = 'none';
     container.innerHTML = '';
     textarea.style.paddingTop = '12px';
+    footer.style.height = '140px';
     return;
   }
+
   container.style.display = 'flex';
   container.innerHTML = promptImages.map((img, i) => `
     <div class="prompt-image-item">
@@ -1615,9 +1659,15 @@ function renderPromptImages() {
       <button class="prompt-image-remove" onclick="removePromptImage(${i})">✕</button>
     </div>
   `).join('');
-  // 动态调整 textarea 的 padding-top
-  const containerHeight = container.offsetHeight + 8;
-  textarea.style.paddingTop = containerHeight + 'px';
+
+  // 计算图片区域高度并调整 textarea 和 footer
+  setTimeout(() => {
+    const containerHeight = container.offsetHeight;
+    const extraHeight = Math.max(0, containerHeight - 20); // 减去一些重叠
+    textarea.style.paddingTop = (12 + containerHeight) + 'px';
+    // 扩展 footer 高度
+    footer.style.height = (140 + extraHeight) + 'px';
+  }, 0);
 }
 
 function removePromptImage(index) {
@@ -2253,6 +2303,11 @@ function showSettingsModal() {
 
 function hideSettingsModal() {
   document.getElementById('settingsModal').style.display = 'none';
+}
+
+function toggleKeyVisibility(inputId) {
+  const input = document.getElementById(inputId);
+  input.type = input.type === 'password' ? 'text' : 'password';
 }
 
 function setTheme(theme) {
