@@ -110,8 +110,8 @@ PLATFORMS: Dict[str, Dict[str, Any]] = {
 }
 
 # 当前选择的平台和模型（可通过API修改）
-_current_platform = "openai"
-_current_image_model = "gpt-image-1"
+_current_platform = "v3"
+_current_image_model = "gptimage2"
 _current_text_platform = "v3"  # 文本模型独立平台（V3.CM 有文本模型）
 _current_text_model = "gpt-4o-mini"
 

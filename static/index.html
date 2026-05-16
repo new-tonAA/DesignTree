@@ -1050,8 +1050,8 @@ let currentGridClass = 'g4';
 let selectedImageUrls = new Set();
 let currentNodeImageUrlSet = new Set();
 let platformsData = {};
-let currentPlatform = 'openai';
-let currentImageModel = 'gpt-image-1';
+let currentPlatform = 'v3';
+let currentImageModel = 'gptimage2';
 let currentTextPlatform = 'deepseek';
 let currentTextModel = 'deepseek-chat';
 let sideWidth = parseInt(localStorage.getItem('archai_side_width') || '288', 10);
@@ -1082,8 +1082,8 @@ function loadConfig() {
   if (saved) {
     try {
       const config = JSON.parse(saved);
-      currentPlatform = config.platform || 'openai';
-      currentImageModel = config.imageModel || 'gpt-image-1';
+      currentPlatform = config.platform || 'v3';
+      currentImageModel = config.imageModel || 'gptimage2';
       currentTextPlatform = config.textPlatform || 'v3';
       currentTextModel = config.textModel || 'gpt-4o-mini';
     } catch (e) {}
