@@ -100,11 +100,10 @@ body.resizing { cursor: col-resize; user-select: none; }
 .topbar { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--bg2); flex-shrink: 0; }
 .breadcrumb { display: flex; align-items: center; gap: 4px; font-family: var(--mono); font-size: 11px; color: var(--muted); overflow: hidden; white-space: nowrap; flex: 1; min-width: 0; }
 .bc-sep { color: var(--dim); flex-shrink: 0; }
-.bc-item { cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: all .15s; overflow: hidden; text-overflow: ellipsis; max-width: 120px; white-space: nowrap; flex-shrink: 1; }
-.n-btns { display: flex; gap: 3px; align-items: center; flex-shrink: 0; }
+.bc-item { cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: all .15s; overflow: hidden; text-overflow: ellipsis; max-width: 180px; white-space: nowrap; }
 .bc-item:hover { background: var(--bg3); color: var(--text); }
 .bc-cur { color: var(--accent); font-weight: 500; }
-
+.n-btns { display: flex; gap: 3px; align-items: center; flex-shrink: 0; }
 .n-lbl { font-size: 11px; color: var(--muted); margin-right: 4px; }
 .nb { width: 26px; height: 22px; border-radius: 4px; border: 1px solid var(--line2); background: transparent; color: var(--muted); font-size: 11px; cursor: pointer; font-family: var(--mono); transition: all .15s; }
 .nb:hover { border-color: var(--accent); color: var(--accent); }
@@ -676,8 +675,8 @@ textarea#userInput::placeholder { color: var(--dim); }
     <!-- Main area -->
     <div class="main">
       <div class="topbar">
-        <div class="breadcrumb" id="breadcrumb" style="min-width:0;overflow:hidden;flex-shrink:1">—</div>
-        <div class="n-btns" style="flex-shrink:0">
+        <div class="breadcrumb" id="breadcrumb">—</div>
+        <div class="n-btns">
           <span class="n-lbl">张数</span>
           <button class="nb" onclick="setN(this,1,'g1')">1</button>
           <button class="nb" onclick="setN(this,2,'g2')">2</button>
@@ -702,14 +701,12 @@ textarea#userInput::placeholder { color: var(--dim); }
               <textarea id="userInput" placeholder="描述你的设计需求或改进方向…（可拖入图片）" rows="2"
                 onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();generate()}"></textarea>
             </div>
-            <!-- 工具栏 -->
+            <!-- 工具栏在下方 -->
             <div class="footer-toolbar">
               <div class="toolbar-left">
                 <button id="uploadBtn" class="toolbar-btn" onclick="document.getElementById('promptImageUpload').click()">
                   📷 图片
                 </button>
-                <!-- 已上传文件名列表 -->
-                <div id="promptImageNames" class="prompt-image-names" style="display:none"></div>
                 <button id="voiceBtn" class="toolbar-btn" onclick="startVoiceInput()">
                   🎙 语音
                 </button>
@@ -722,9 +719,12 @@ textarea#userInput::placeholder { color: var(--dim); }
                   <button class="status-btn" onclick="rePolish()">重试</button>
                 </div>
               </div>
-              <button class="send-btn toolbar-btn" id="sendBtn" onclick="generate()">
-                🚀 生成
-              </button>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span id="promptImageNames" class="prompt-image-names" style="display:none"></span>
+                <button class="send-btn toolbar-btn" id="sendBtn" onclick="generate()">
+                  🚀 生成
+                </button>
+              </div>
             </div>
             <input type="file" id="promptImageUpload" accept="image/*" multiple style="display:none" onchange="handlePromptImages(this)">
           </div>
@@ -837,7 +837,7 @@ textarea#userInput::placeholder { color: var(--dim); }
     <div id="projectList" style="overflow:auto;display:grid;gap:8px;padding-right:2px"></div>
     <div style="display:flex;gap:10px;margin-top:12px">
       <button class="cfg-sel" style="flex:1;cursor:pointer" onclick="hideProjectModal()">关闭</button>
-      <button class="send-btn" style="flex:1;justify-content:center" onclick="newProjectFromUI(true)">关闭</button>
+      <button class="send-btn" style="flex:1;justify-content:center" onclick="newProjectFromUI(true)">新建并关闭</button>
     </div>
   </div>
 </div>
@@ -1698,14 +1698,9 @@ function renderPromptImages() {
 
   namesEl.style.display = 'flex';
   namesEl.innerHTML = promptImages.map((img, i) => {
-    // 截断文件名
-    const shortName = img.name.length > 8 ? img.name.substring(0, 7) + '…' : img.name;
-    return `<span class="prompt-image-name-tag" onclick="removePromptImage(${i})" title="${img.name} ✕">${shortName}</span>`;
+    const shortName = img.name.length > 8 ? img.name.substring(0, 6) + '…' : img.name;
+    return `<span class="prompt-image-name-tag" onclick="removePromptImage(${i})" title="点击移除: ${img.name}">${shortName} ×</span>`;
   }).join('');
-}
-    // 扩展 footer 高度
-    footer.style.height = (140 + extraHeight) + 'px';
-  }, 0);
 }
 
 function removePromptImage(index) {
