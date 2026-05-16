@@ -124,9 +124,20 @@ def _require_session():
 
 # ── 页面 ─────────────────────────────────────
 
+def get_resource_path(relative_path: str) -> Path:
+    """获取资源文件路径（兼容开发环境和打包后）"""
+    import sys
+    if getattr(sys, 'frozen', False):
+        # PyInstaller打包后，资源在临时目录
+        base_path = Path(sys._MEIPASS)
+    else:
+        # 开发环境
+        base_path = Path(__file__).parent
+    return base_path / relative_path
+
 @app.get("/", response_class=HTMLResponse)
 def index():
-    return (Path(__file__).parent / "static" / "index.html").read_text(encoding="utf-8")
+    return get_resource_path("static/index.html").read_text(encoding="utf-8")
 
 
 # ── 项目管理 ─────────────────────────────────
