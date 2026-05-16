@@ -34,26 +34,18 @@
   --mono:   'JetBrains Mono', monospace;
 }
 
-/* 主题预设 */
-.theme-ocean {
-  --accent: #5b8fbf;
-  --acl:    rgba(91,143,191,0.15);
-}
-.theme-forest {
-  --accent: #5a9e7a;
-  --acl:    rgba(90,158,122,0.15);
-}
-.theme-rose {
-  --accent: #c06080;
-  --acl:    rgba(192,96,128,0.15);
-}
-.theme-sunset {
-  --accent: #d4956a;
-  --acl:    rgba(212,149,106,0.15);
-}
-.theme-purple {
-  --accent: #9b7abf;
-  --acl:    rgba(155,122,191,0.15);
+/* 浅色主题 */
+.theme-light {
+  --bg:     #f5f5f5;
+  --bg2:    #ffffff;
+  --bg3:    #e8e8e8;
+  --bg4:    #d4d4d4;
+  --line:   rgba(0,0,0,0.08);
+  --line2:  rgba(0,0,0,0.12);
+  --text:   #1a1a1a;
+  --muted:  #666666;
+  --dim:    #999999;
+  --bluel:  rgba(91,143,191,0.1);
 }
 html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; }
 
@@ -135,40 +127,14 @@ body.resizing { cursor: col-resize; user-select: none; }
 .gen-error { font-size: 11px; color: var(--red); padding: 4px 8px; background: rgba(192,96,96,.1); border-radius: 4px; border: 1px solid rgba(192,96,96,.2); }
 
 /* ── Footer / Input ─────────────────────────── */
-.footer { flex-shrink: 0; border-top: 1px solid var(--line); background: var(--bg2); position: relative; display: flex; flex-direction: column; }
-.footer-resizer {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 6px;
-  background: transparent;
-  cursor: ns-resize;
-  z-index: 10;
-}
-.footer-resizer:hover { background: var(--bg4); }
-.footer-resizer::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 30px;
-  height: 2px;
-  background: var(--line2);
-  border-radius: 1px;
-  opacity: 0;
-  transition: opacity .15s;
-}
-.footer-resizer:hover::after { opacity: 1; }
-
+.footer { flex-shrink: 0; height: 140px; border-top: 1px solid var(--line); background: var(--bg2); display: flex; flex-direction: column; }
 .footer-content {
-  padding: 2px 14px 10px 14px;  /* 上边距进一步减少 */
+  padding: 8px 14px 10px 14px;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;  /* 内容固定在底部 */
+  justify-content: flex-end;
   height: 100%;
-  gap: 8px;  /* 各元素间距固定 */
+  gap: 8px;
 }
 
 .cfg-row { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; align-items: center; }
@@ -599,7 +565,6 @@ textarea#userInput::placeholder { color: var(--dim); }
       </div>
 
       <div class="footer">
-        <div class="footer-resizer" id="footerResizeHandle"></div>
         <div class="footer-content">
           <div class="input-row composer-main" style="flex-direction:column">
             <div class="input-wrap composer-input" style="width:100%">
@@ -787,14 +752,10 @@ textarea#userInput::placeholder { color: var(--dim); }
 
     <!-- 主题色 -->
     <div style="margin-bottom:20px">
-      <div style="font-size:12px;font-weight:500;color:var(--muted);margin-bottom:10px">主题色</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <button class="theme-btn" data-theme="" onclick="setTheme('')" style="width:32px;height:32px;border-radius:50%;background:#c8a96e;border:2px solid var(--line2);cursor:pointer"></button>
-        <button class="theme-btn" data-theme="ocean" onclick="setTheme('ocean')" style="width:32px;height:32px;border-radius:50%;background:#5b8fbf;border:2px solid var(--line2);cursor:pointer"></button>
-        <button class="theme-btn" data-theme="forest" onclick="setTheme('forest')" style="width:32px;height:32px;border-radius:50%;background:#5a9e7a;border:2px solid var(--line2);cursor:pointer"></button>
-        <button class="theme-btn" data-theme="rose" onclick="setTheme('rose')" style="width:32px;height:32px;border-radius:50%;background:#c06080;border:2px solid var(--line2);cursor:pointer"></button>
-        <button class="theme-btn" data-theme="sunset" onclick="setTheme('sunset')" style="width:32px;height:32px;border-radius:50%;background:#d4956a;border:2px solid var(--line2);cursor:pointer"></button>
-        <button class="theme-btn" data-theme="purple" onclick="setTheme('purple')" style="width:32px;height:32px;border-radius:50%;background:#9b7abf;border:2px solid var(--line2);cursor:pointer"></button>
+      <div style="font-size:12px;font-weight:500;color:var(--muted);margin-bottom:10px">主题模式</div>
+      <div style="display:flex;gap:10px">
+        <button class="theme-btn" data-theme="" onclick="setTheme('')" style="padding:8px 16px;border-radius:6px;background:var(--bg3);border:2px solid var(--line2);cursor:pointer;color:var(--text);font-size:12px">🌙 深色</button>
+        <button class="theme-btn" data-theme="light" onclick="setTheme('light')" style="padding:8px 16px;border-radius:6px;background:var(--bg3);border:2px solid var(--line2);cursor:pointer;color:var(--text);font-size:12px">☀️ 浅色</button>
       </div>
     </div>
 
@@ -978,11 +939,6 @@ async function init() {
   if (!Number.isFinite(sideWidth)) sideWidth = 288;
   applySideWidth(sideWidth);
   initSideResize();
-
-  // Init footer height
-  if (!Number.isFinite(footerHeight)) footerHeight = 180;
-  applyFooterHeight(footerHeight);
-  initFooterResize();
 
   // Load saved input
   loadInput();
@@ -1354,67 +1310,12 @@ function applySideWidth(width) {
   localStorage.setItem('archai_side_width', String(clamped));
 }
 
-// ── Footer resize ─────────────────────────────
-let footerHeight = parseInt(localStorage.getItem('archai_footer_height') || '180', 10);
-
+// ── Textarea height sync ───────────────────────
 function syncComposerTextareaHeight() {
-  const content = document.querySelector('.footer-content');
-  const inputRow = content?.querySelector('.input-row');
   const textarea = document.getElementById('userInput');
-  if (!content || !inputRow || !textarea) return;
-
-  const gap = parseFloat(getComputedStyle(content).gap || '0') || 0;
-  const visibleChildren = Array.from(content.children).filter((child) => child.offsetParent !== null);
-  const nonInputHeight = visibleChildren
-    .filter((child) => child !== inputRow)
-    .reduce((sum, child) => sum + child.getBoundingClientRect().height, 0);
-  const gapTotal = Math.max(0, visibleChildren.length - 1) * gap;
-  const available = content.clientHeight - nonInputHeight - gapTotal;
-
-  const textareaHeight = Math.max(64, Math.min(350, Math.floor(available)));
-  textarea.style.height = `${textareaHeight}px`;
-}
-
-function applyFooterHeight(height) {
-  const clamped = Math.max(130, Math.min(400, Math.round(height)));
-  footerHeight = clamped;
-  const footer = document.querySelector('.footer');
-  if (footer) footer.style.height = clamped + 'px';
-  syncComposerTextareaHeight();
-  localStorage.setItem('archai_footer_height', String(clamped));
-}
-
-function initFooterResize() {
-  const handle = document.getElementById('footerResizeHandle');
-  if (!handle) return;
-
-  let dragging = false;
-  let startY = 0;
-  let startHeight = footerHeight;
-
-  const onMove = (e) => {
-    if (!dragging) return;
-    const dy = startY - e.clientY;  // 向上拖增大，向下拖减小
-    applyFooterHeight(startHeight + dy);
-  };
-
-  const onUp = () => {
-    if (!dragging) return;
-    dragging = false;
-    document.body.classList.remove('resizing');
-    window.removeEventListener('mousemove', onMove);
-    window.removeEventListener('mouseup', onUp);
-  };
-
-  handle.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    dragging = true;
-    startY = e.clientY;
-    startHeight = footerHeight;
-    document.body.classList.add('resizing');
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  });
+  if (!textarea) return;
+  // 固定高度，不再动态调整
+  textarea.style.height = '72px';
 }
 
 // ── Image viewer ─────────────────────────────
@@ -2086,8 +1987,7 @@ function showSettingsModal() {
   // 加载当前主题
   const currentTheme = localStorage.getItem('archai_theme') || '';
   document.querySelectorAll('.theme-btn').forEach(btn => {
-    btn.style.borderColor = btn.dataset.theme === currentTheme ? 'var(--text)' : 'var(--line2)';
-    btn.style.boxShadow = btn.dataset.theme === currentTheme ? '0 0 0 2px var(--accent)' : 'none';
+    btn.style.borderColor = btn.dataset.theme === currentTheme ? 'var(--accent)' : 'var(--line2)';
   });
   
   // 加载API keys
@@ -2114,8 +2014,7 @@ function setTheme(theme) {
   
   // 更新按钮状态
   document.querySelectorAll('.theme-btn').forEach(btn => {
-    btn.style.borderColor = btn.dataset.theme === theme ? 'var(--text)' : 'var(--line2)';
-    btn.style.boxShadow = btn.dataset.theme === theme ? '0 0 0 2px var(--accent)' : 'none';
+    btn.style.borderColor = btn.dataset.theme === theme ? 'var(--accent)' : 'var(--line2)';
   });
 }
 
