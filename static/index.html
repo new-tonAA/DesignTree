@@ -61,6 +61,22 @@
   --dim:    #5a5a5a;
   --bluel:  rgba(91,143,191,0.08);
 }
+
+/* 傍晚主题 */
+.theme-dusk {
+  --bg:     #2d2535;
+  --bg2:    #3a3245;
+  --bg3:    #483f55;
+  --bg4:    #574d65;
+  --line:   rgba(255,255,255,0.06);
+  --line2:  rgba(255,255,255,0.10);
+  --text:   #e8e0f0;
+  --muted:  #a090b0;
+  --dim:    #706080;
+  --bluel:  rgba(180,120,200,0.08);
+  --accent: #c080a0;
+  --acl:    rgba(192,128,160,0.15);
+}
 html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; }
 
 /* ── Layout ─────────────────────────────────── */
@@ -190,11 +206,57 @@ textarea#userInput {
 .theme-midnight textarea#userInput {
   background: var(--bg3);
 }
+.theme-dusk textarea#userInput {
+  background: var(--bg3);
+}
 textarea#userInput:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(200,169,110,0.15);
 }
 textarea#userInput::placeholder { color: var(--dim); }
+
+/* ── Prompt image preview ────────────────────── */
+.prompt-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.prompt-image-item {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--line2);
+  background: var(--bg3);
+}
+.prompt-image-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.prompt-image-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.6);
+  border: none;
+  color: #fff;
+  font-size: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity .15s;
+}
+.prompt-image-item:hover .prompt-image-remove {
+  opacity: 1;
+}
 
 /* ── Model memory textarea ───────────────────── */
 .model-memory-area {
@@ -588,12 +650,16 @@ textarea#userInput::placeholder { color: var(--dim); }
       <div class="footer">
         <div class="footer-content">
           <div class="input-row composer-main" style="flex-direction:column">
+            <div id="promptImagesPreview" class="prompt-images" style="display:none"></div>
             <div class="input-wrap composer-input" style="width:100%">
               <textarea id="userInput" placeholder="描述你的设计需求或改进方向…" rows="2"
                 onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();generate()}"></textarea>
             </div>
             <div class="footer-toolbar">
               <div class="toolbar-left">
+                <button id="uploadBtn" class="toolbar-btn" onclick="document.getElementById('promptImageUpload').click()">
+                  📷 图片
+                </button>
                 <button id="voiceBtn" class="toolbar-btn" onclick="startVoiceInput()">
                   🎤 语音
                 </button>
@@ -610,6 +676,7 @@ textarea#userInput::placeholder { color: var(--dim); }
                 生成
               </button>
             </div>
+            <input type="file" id="promptImageUpload" accept="image/*" multiple style="display:none" onchange="handlePromptImages(this)">
           </div>
         </div>
       </div>
@@ -774,10 +841,11 @@ textarea#userInput::placeholder { color: var(--dim); }
     <!-- 主题色 -->
     <div style="margin-bottom:20px">
       <div style="font-size:12px;font-weight:500;color:var(--muted);margin-bottom:10px">主题模式</div>
-      <div style="display:flex;gap:8px">
-        <button class="theme-btn" data-theme="" onclick="setTheme('')" style="flex:1;padding:8px 0;border-radius:6px;background:var(--bg3);border:1px solid var(--line2);cursor:pointer;color:var(--text);font-size:12px;display:flex;align-items:center;justify-content:center;gap:4px">🌙 深色</button>
-        <button class="theme-btn" data-theme="midnight" onclick="setTheme('midnight')" style="flex:1;padding:8px 0;border-radius:6px;background:var(--bg3);border:1px solid var(--line2);cursor:pointer;color:var(--text);font-size:12px;display:flex;align-items:center;justify-content:center;gap:4px">🌙 午夜</button>
-        <button class="theme-btn" data-theme="light" onclick="setTheme('light')" style="flex:1;padding:8px 0;border-radius:6px;background:var(--bg3);border:1px solid var(--line2);cursor:pointer;color:var(--text);font-size:12px;display:flex;align-items:center;justify-content:center;gap:4px">☀️ 浅色</button>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="theme-btn" data-theme="" onclick="setTheme('')" style="flex:1;min-width:70px;padding:8px 0;border-radius:6px;background:var(--bg3);border:1px solid var(--line2);cursor:pointer;color:var(--text);font-size:12px;display:flex;align-items:center;justify-content:center;gap:4px">🌙 深色</button>
+        <button class="theme-btn" data-theme="midnight" onclick="setTheme('midnight')" style="flex:1;min-width:70px;padding:8px 0;border-radius:6px;background:var(--bg3);border:1px solid var(--line2);cursor:pointer;color:var(--text);font-size:12px;display:flex;align-items:center;justify-content:center;gap:4px">🌙 午夜</button>
+        <button class="theme-btn" data-theme="dusk" onclick="setTheme('dusk')" style="flex:1;min-width:70px;padding:8px 0;border-radius:6px;background:var(--bg3);border:1px solid var(--line2);cursor:pointer;color:var(--text);font-size:12px;display:flex;align-items:center;justify-content:center;gap:4px">🌆 傍晚</button>
+        <button class="theme-btn" data-theme="light" onclick="setTheme('light')" style="flex:1;min-width:70px;padding:8px 0;border-radius:6px;background:var(--bg3);border:1px solid var(--line2);cursor:pointer;color:var(--text);font-size:12px;display:flex;align-items:center;justify-content:center;gap:4px">☀️ 浅色</button>
       </div>
     </div>
 
@@ -1464,6 +1532,48 @@ async function startVoiceInput() {
   }
 }
 
+// ── Prompt images ─────────────────────────────
+let promptImages = [];
+
+function handlePromptImages(input) {
+  const files = Array.from(input.files);
+  if (!files.length) return;
+
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      promptImages.push({
+        name: file.name,
+        data: e.target.result
+      });
+      renderPromptImages();
+    };
+    reader.readAsDataURL(file);
+  });
+  input.value = '';
+}
+
+function renderPromptImages() {
+  const container = document.getElementById('promptImagesPreview');
+  if (!promptImages.length) {
+    container.style.display = 'none';
+    container.innerHTML = '';
+    return;
+  }
+  container.style.display = 'flex';
+  container.innerHTML = promptImages.map((img, i) => `
+    <div class="prompt-image-item">
+      <img src="${img.data}" alt="${img.name}">
+      <button class="prompt-image-remove" onclick="removePromptImage(${i})">✕</button>
+    </div>
+  `).join('');
+}
+
+function removePromptImage(index) {
+  promptImages.splice(index, 1);
+  renderPromptImages();
+}
+
 function initSideResize() {
   const handle = document.getElementById('sideResizeHandle');
   const workspace = document.querySelector('.workspace');
@@ -1594,8 +1704,8 @@ function hidePromptBar() {
 // ── Generate ──────────────────────────────────
 async function generate() {
   const input = document.getElementById('userInput').value.trim();
-  if (!input) { toast('请输入设计需求'); return; }
-  
+  if (!input && !promptImages.length) { toast('请输入设计需求或上传图片'); return; }
+
   // 获取模型记忆
   const modelMemory = document.getElementById('modelMemory')?.value.trim() || '';
 
@@ -1608,10 +1718,18 @@ async function generate() {
   hidePromptBar();
 
   try {
-    // 直接使用输入框内容，不再后端润色（用户已在前端润色）
+    // 准备请求数据
+    const bodyData = {
+      user_input: input,
+      n: currentN,
+      optimize_prompt: false,
+      model_memory: modelMemory,
+      prompt_images: promptImages.map(img => img.data)  // 发送base64图片
+    };
+
     const res = await fetch('/api/generate', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({user_input: input, n: currentN, optimize_prompt: false, model_memory: modelMemory})
+      body: JSON.stringify(bodyData)
     });
 
     btn.disabled = false;
@@ -1631,7 +1749,10 @@ async function generate() {
     selectedImageUrl = null;
     originalInput = '';
     polishedInput = '';
-    localStorage.removeItem(INPUT_KEY);  // 清除保存的输入
+    localStorage.removeItem(INPUT_KEY);
+    // 清除已上传的图片
+    promptImages = [];
+    renderPromptImages();
 
     await refreshState();
   } catch (e) {
