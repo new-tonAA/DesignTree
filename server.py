@@ -616,5 +616,16 @@ def _path_tags(s: dict) -> list:
 
 
 if __name__ == "__main__":
+    import webbrowser
+    import threading
+    import time
+
+    def open_browser():
+        time.sleep(1.5)  # 等待服务器启动
+        webbrowser.open("http://localhost:8000")
+
+    # 启动后自动打开浏览器
+    threading.Thread(target=open_browser, daemon=True).start()
+
     print("\n  ArchAI Design Studio → http://localhost:8000\n")
-    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=False)
