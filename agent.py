@@ -10,6 +10,7 @@ agent.py — AI调用层
 """
 
 import os
+import sys
 import json
 import time
 import base64
@@ -19,7 +20,17 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 
 
-_CONFIG_PATH = Path(__file__).parent / "config.json"
+def get_app_dir() -> Path:
+    """获取应用程序所在目录（兼容开发环境和打包后）"""
+    if getattr(sys, 'frozen', False):
+        # PyInstaller打包后
+        return Path(sys.executable).parent
+    else:
+        # 开发环境
+        return Path(__file__).parent
+
+
+_CONFIG_PATH = get_app_dir() / "config.json"
 
 # ─────────────────────────────────────────────
 # 平台配置（写死在代码中）
@@ -558,7 +569,7 @@ def generate_images(
 
     api_key  = _sanitize_api_key(_get_api_key())
     platform = _current_platform
-    save_dir = save_dir or (Path(__file__).parent / "static" / "uploads")
+    save_dir = save_dir or (get_app_dir() / "static" / "uploads")
     save_dir.mkdir(parents=True, exist_ok=True)
 
     # OpenRouter需要特殊header
