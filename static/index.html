@@ -541,6 +541,39 @@ textarea#userInput::placeholder { color: var(--dim); }
 .hist-prompt-toggle { font-size: 10px; color: var(--muted); cursor: pointer; text-decoration: underline; margin-top: 2px; }
 .hist-prompt { font-size: 10px; color: var(--dim); font-family: var(--mono); margin-top: 4px; line-height: 1.5; display: none; }
 .hist-prompt.show { display: block; }
+.hist-attached-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 6px;
+}
+.hist-attached-item {
+  position: relative;
+  aspect-ratio: 16/10;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--bg3);
+}
+.hist-attached-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.hist-attached-item .img-zoom-btn {
+  width: 24px;
+  height: 24px;
+  font-size: 12px;
+  bottom: 4px;
+  right: 4px;
+}
+
+.hist-attachments-label, .hist-selected-label {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 6px;
+  margin-bottom: 2px;
+}
 
 /* ── Style tab ──────────────────────────────── */
 .style-row { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
@@ -634,6 +667,34 @@ textarea#userInput::placeholder { color: var(--dim); }
 .picked-node { font-size: 11px; color: var(--accent); font-family: var(--mono); }
 .picked-text { font-size: 11px; color: var(--text); line-height: 1.4; margin-top: 2px; }
 .picked-empty { font-size: 12px; color: var(--dim); padding: 6px 0; }
+.tree-attached-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 4px;
+}
+.tree-attached-item {
+  border: 1px solid var(--line);
+  background: var(--bg3);
+  border-radius: var(--radius);
+  padding: 4px;
+}
+.tree-attached-thumb-wrap {
+  position: relative;
+}
+.tree-attached-thumb {
+  width: 100%;
+  aspect-ratio: 16/10;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  transition: transform .15s, box-shadow .15s;
+}
+.tree-attached-item:hover .tree-attached-thumb,
+.hist-attached-item:hover img {
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(0,0,0,.2);
+}
 
 @media (max-width: 980px) {
   .workspace { grid-template-columns: 1fr; }
@@ -748,6 +809,8 @@ textarea#userInput::placeholder { color: var(--dim); }
           <div id="treeContainer"></div>
           <div class="sec" style="margin-top:16px">本次prompt关键词</div>
           <div class="path-tags" id="pathTags"></div>
+          <div class="sec" style="margin-top:16px">附带图片</div>
+          <div id="treeAttachedContainer"></div>
         </div>
         <div class="panel" id="tabHist">
           <div class="sec">修改历史</div>
@@ -767,7 +830,6 @@ textarea#userInput::placeholder { color: var(--dim); }
           <div id="stylePicker" class="style-pick-grid"></div>
           <div class="style-pick-actions">
             <button class="mini-btn ghost" onclick="resetStyleSelection()">清空勾选</button>
-            <button class="mini-btn" onclick="applyStyleSelection()">应用选择</button>
           </div>
           <div class="sec" style="margin-top:14px">参考图</div>
           <div class="ref-grid" id="refGrid"></div>
@@ -974,9 +1036,9 @@ textarea#userInput::placeholder { color: var(--dim); }
   </button>
   <div style="position:relative;max-width:90vw;max-height:85vh">
     <img id="viewerImage" style="max-width:90vw;max-height:85vh;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.5)">
-    <div style="position:absolute;bottom:12px;right:12px;display:flex;gap:8px">
+    <div id="viewerActions" style="position:absolute;bottom:12px;right:12px;display:flex;gap:8px">
       <button id="viewerSelectBtn" style="padding:6px 14px;background:var(--accent);border:none;border-radius:6px;color:var(--bg);font-size:12px;font-weight:500;cursor:pointer" onclick="selectFromViewer()">选择</button>
-      <button style="padding:6px 14px;background:var(--bg4);border:1px solid var(--line2);border-radius:6px;color:var(--text);font-size:12px;cursor:pointer" onclick="downloadFromViewer()">下载</button>
+      <button id="viewerDownloadBtn" style="padding:6px 14px;background:var(--bg4);border:1px solid var(--line2);border-radius:6px;color:var(--text);font-size:12px;cursor:pointer" onclick="downloadFromViewer()">下载</button>
     </div>
   </div>
 </div>
@@ -985,7 +1047,8 @@ textarea#userInput::placeholder { color: var(--dim); }
 // ── State ────────────────────────────────────
 let currentN = 4;
 let currentGridClass = 'g4';
-let selectedImageUrl = null;
+let selectedImageUrls = new Set();
+let currentNodeImageUrlSet = new Set();
 let platformsData = {};
 let currentPlatform = 'openai';
 let currentImageModel = 'gpt-image-1';
@@ -1001,6 +1064,7 @@ const STATE_KEY = 'archai_session_path';
 const CONFIG_KEY = 'archai_config';
 const INPUT_KEY = 'archai_input';
 const MEMORY_KEY = 'archai_model_memory';
+const STYLE_KEY = 'archai_style_selection';
 
 // Save config to localStorage
 function saveConfig() {
@@ -1108,6 +1172,9 @@ async function init() {
   // Load prompt images
   loadPromptImages();
 
+  // Load style selection
+  loadStyleSelection();
+
   // Auto-save input on change
   document.getElementById('userInput').addEventListener('input', saveInput);
 
@@ -1128,6 +1195,23 @@ async function init() {
   } else {
     // Auto create new project
     await autoCreateProject();
+  }
+
+  // 恢复标签页状态
+  const savedTab = localStorage.getItem('archai_active_tab');
+  if (savedTab) {
+    const tabBtn = document.querySelector(`.stab[onclick*="${savedTab}"]`);
+    if (tabBtn) {
+      switchTab(tabBtn, savedTab);
+    }
+  }
+
+  // 恢复图片查看器状态
+  const savedViewerUrl = localStorage.getItem('archai_viewer_url');
+  if (savedViewerUrl) {
+    const isSelected = localStorage.getItem('archai_viewer_selected') === 'true';
+    const selectable = localStorage.getItem('archai_viewer_selectable') !== 'false';
+    showImageViewer(savedViewerUrl, isSelected, selectable);
   }
 }
 
@@ -1511,45 +1595,49 @@ function syncComposerTextareaHeight() {
 // ── Image viewer ─────────────────────────────
 let viewerImageUrl = null;
 
-function showImageViewer(url, fromPicked = false) {
+let viewerIsSelected = false;
+let viewerSelectable = true;
+
+function showImageViewer(url, isSelected = false, selectable = true) {
   viewerImageUrl = url;
+  viewerIsSelected = isSelected;
+  viewerSelectable = selectable;
   document.getElementById('viewerImage').src = url;
   const selectBtn = document.getElementById('viewerSelectBtn');
-  if (fromPicked) {
-    selectBtn.textContent = '取消选择';
-    selectBtn.style.background = 'var(--red)';
-    selectBtn.onclick = () => deselectFromViewer();
+  if (!selectable) {
+    selectBtn.style.display = 'none';
   } else {
-    selectBtn.textContent = '选择';
-    selectBtn.style.background = 'var(--accent)';
-    selectBtn.onclick = () => selectFromViewer();
+    selectBtn.style.display = 'inline-block';
+    if (isSelected) {
+      selectBtn.textContent = '取消选择';
+      selectBtn.style.background = 'var(--red)';
+    } else {
+      selectBtn.textContent = '选择';
+      selectBtn.style.background = 'var(--accent)';
+    }
   }
   document.getElementById('imageViewerModal').style.display = 'flex';
+  // 保存当前查看的图片URL
+  localStorage.setItem('archai_viewer_url', url);
+  localStorage.setItem('archai_viewer_selected', String(isSelected));
+  localStorage.setItem('archai_viewer_selectable', String(selectable));
 }
 
 function hideImageViewer() {
   document.getElementById('imageViewerModal').style.display = 'none';
   viewerImageUrl = null;
+  viewerIsSelected = false;
+  viewerSelectable = true;
+  // 清除保存的状态
+  localStorage.removeItem('archai_viewer_url');
+  localStorage.removeItem('archai_viewer_selected');
+  localStorage.removeItem('archai_viewer_selectable');
 }
 
 async function selectFromViewer() {
-  if (!viewerImageUrl) return;
+  if (!viewerImageUrl || !viewerSelectable) return;
   await selectImage(null, viewerImageUrl);
   hideImageViewer();
-}
-
-async function deselectFromViewer() {
-  if (!viewerImageUrl) return;
-  // 取消选择：传空字符串
-  const res = await fetch('/api/select_image', {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({image_url: ''})
-  });
-  hideImageViewer();
-  if (res.ok) {
-    await refreshState();
-    toast('已取消选择');
-  }
 }
 
 function downloadFromViewer() {
@@ -1812,6 +1900,12 @@ function initSideResize() {
 }
 
 async function switchToNode(nodeId) {
+  // 先更新UI状态（立即响应）
+  document.querySelectorAll('.tree-node').forEach(el => el.classList.remove('current'));
+  document.querySelectorAll('.hist-item').forEach(el => el.classList.remove('current'));
+  document.querySelector(`.tree-node[data-id="${nodeId}"]`)?.classList.add('current');
+  document.querySelector(`.hist-item[data-node-id="${nodeId}"]`)?.classList.add('current');
+
   const res = await fetch('/api/switch_node', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
@@ -1844,11 +1938,18 @@ async function refreshState() {
   renderBreadcrumb(s);
   renderTree(s.tree, document.getElementById('treeContainer'));
   renderPathTags(s.path_tags);
+  currentNodeImageUrlSet = new Set(
+    (s.current_images || [])
+      .map((img) => (img && img.url) ? img.url : null)
+      .filter(Boolean)
+  );
+  selectedImageUrls = new Set(s.current_selecteds || []);
+  renderTreeAttachedImages(s.current_attachments || [], s.current_selecteds || []);
   renderHistory(s.history, s.save_path);
   renderPicked(s.history);
   renderStyle(s.style_summary, s.ref_images);
   renderStylePicker(s.style_candidates || []);
-  renderImages(s.current_images || [], s.current_selected || null);
+  renderImages(s.current_images || [], s.current_selecteds || []);
 
   nodePromptMap = {};
   (s.history || []).forEach((h) => {
@@ -1904,6 +2005,9 @@ function hidePromptBar() {
 }
 
 // ── Generate ──────────────────────────────────
+let generatingNode = null;
+let pollingInterval = null;
+
 async function generate() {
   const input = document.getElementById('userInput').value.trim();
   if (!input && !promptImages.length) { toast('请输入设计需求或上传图片'); return; }
@@ -1919,6 +2023,11 @@ async function generate() {
   showLoadingCards(currentN);
   hidePromptBar();
 
+  // 开始轮询状态（每2秒刷新一次）
+  pollingInterval = setInterval(async () => {
+    await refreshState();
+  }, 2000);
+
   try {
     // 准备请求数据
     const bodyData = {
@@ -1926,13 +2035,19 @@ async function generate() {
       n: currentN,
       optimize_prompt: false,
       model_memory: modelMemory,
-      prompt_images: promptImages.map(img => img.data)  // 发送base64图片
+      prompt_images: promptImages.map(img => ({ url: img.data, name: img.name }))  // 发送附带图片
     };
 
     const res = await fetch('/api/generate', {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify(bodyData)
     });
+
+    // 停止轮询
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
+      pollingInterval = null;
+    }
 
     btn.disabled = false;
     btn.innerHTML = '<i class="ti ti-sparkles"></i> 生成';
@@ -1948,7 +2063,7 @@ async function generate() {
     document.getElementById('userInput').value = '';
     document.getElementById('polishStatus').style.display = 'none';
     syncComposerTextareaHeight();
-    selectedImageUrl = null;
+    selectedImageUrls = new Set();
     originalInput = '';
     polishedInput = '';
     localStorage.removeItem(INPUT_KEY);
@@ -1957,6 +2072,11 @@ async function generate() {
 
     await refreshState();
   } catch (e) {
+    // 停止轮询
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
+      pollingInterval = null;
+    }
     btn.disabled = false;
     btn.innerHTML = '<i class="ti ti-sparkles"></i> 生成';
     toast('生成失败: ' + e.message);
@@ -1984,12 +2104,13 @@ function showEmptyGrid() {
     </div>`;
 }
 
-function renderImages(images, selectedUrl = null) {
+function renderImages(images, selectedUrls = []) {
   const grid = document.getElementById('imgGrid');
   if (!images || !images.length) {
     showEmptyGrid();
     return;
   }
+  const selectedSet = new Set(selectedUrls || []);
   grid.className = 'img-grid ' + currentGridClass;
   grid.innerHTML = images.map((img, i) => {
     if (img.error || !img.url) return `
@@ -1999,10 +2120,11 @@ function renderImages(images, selectedUrl = null) {
           <span class="gen-error">${img.error || '生成失败'}</span>
         </div>
       </div>`;
+    const isSel = selectedSet.has(img.url);
     return `
-      <div class="img-card ${img.url === selectedUrl ? 'sel' : ''}" onclick="selectImage(this,'${img.url}')">
+      <div class="img-card ${isSel ? 'sel' : ''}" onclick="selectImage(this,'${img.url}')">
         <img src="${img.url}" alt="图${i+1}" loading="lazy">
-        <button class="img-zoom-btn" onclick="event.stopPropagation();showImageViewer('${img.url}')" title="大图查看">
+        <button class="img-zoom-btn" onclick="event.stopPropagation();showImageViewer('${img.url}', ${isSel ? 'true' : 'false'}, true)" title="大图查看">
           🔍
         </button>
       </div>`;
@@ -2010,35 +2132,14 @@ function renderImages(images, selectedUrl = null) {
 }
 
 async function selectImage(el, url) {
-  // 如果点击的是已选中的图片，则取消选择
-  if (el && el.classList.contains('sel')) {
-    el.classList.remove('sel');
-    selectedImageUrl = null;
-    const res = await fetch('/api/select_image', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({image_url: ''})
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      toast('取消选图失败: ' + (err.detail || res.status));
-      await refreshState();
-      return;
-    }
-    await refreshState();
-    return;
-  }
-
-  // 否则选择该图片
-  document.querySelectorAll('#imgGrid .img-card').forEach(c => c.classList.remove('sel'));
-  if (el) el.classList.add('sel');
-  selectedImageUrl = url;
+  if (!url) return;
   const res = await fetch('/api/select_image', {
     method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify({image_url: url})
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    toast('选图失败: ' + (err.detail || res.status));
+    toast('切换选图失败: ' + (err.detail || res.status));
     await refreshState();
     return;
   }
@@ -2099,6 +2200,8 @@ function switchTab(el, id) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('on'));
   el.classList.add('on');
   document.getElementById(id).classList.add('on');
+  // 保存当前标签
+  localStorage.setItem('archai_active_tab', id);
 }
 
 // ── Render helpers ────────────────────────────
@@ -2136,16 +2239,18 @@ function renderTree(node, container, depth=0) {
 
   const tn = document.createElement('div');
   tn.className = 'tree-node' + (node.is_current ? ' current' : '');
+  tn.setAttribute('data-id', node.id);
   tn.onclick = () => {
     switchToNode(node.id);
   };
 
   const dotClass = node.is_current ? 'current' : (node.selected ? 'done' : (depth > 1 ? 'branch' : ''));
+  const selectedMeta = node.selected_count ? ` · 已选${node.selected_count}张` : '';
   tn.innerHTML = `
     <div class="tree-dot ${dotClass}"></div>
     <div>
       <div class="tree-label">${node.label}</div>
-      <div class="tree-meta">${node.id} · ${node.images}张图${node.selected ? ' · 已选' : ''}</div>
+      <div class="tree-meta">${node.id} · ${node.images}张图${selectedMeta}</div>
     </div>`;
   const dotEl = tn.querySelector('.tree-dot');
   if (dotEl) {
@@ -2173,14 +2278,59 @@ function renderPathTags(tags) {
   ).join('');
 }
 
+function renderTreeAttachedImages(images, selectedUrls = []) {
+  const box = document.getElementById('treeAttachedContainer');
+  if (!box) return;
+
+  const list = (images || []).filter(img => img && img.url);
+  if (!list.length) {
+    box.innerHTML = '<div class="picked-empty">当前节点暂无附带图片</div>';
+    return;
+  }
+
+  box.innerHTML = `<div class="tree-attached-grid">${list.map((img) => {
+    return `
+      <div class="tree-attached-item" onclick="showImageViewer('${img.url}', false, false)" style="cursor:pointer">
+        <img class="tree-attached-thumb" src="${img.url}" alt="attached" loading="lazy">
+      </div>
+    `;
+  }).join('')}</div>`;
+}
+
 function renderHistory(history, savePath) {
   document.getElementById('histContainer').innerHTML = history.map(h => `
-    <div class="hist-item ${h.is_current ? 'current' : ''}" onclick="switchToNode('${h.id}')" style="cursor:pointer">
+    <div class="hist-item ${h.is_current ? 'current' : ''}" data-node-id="${h.id}" onclick="switchToNode('${h.id}')" style="cursor:pointer">
       <div class="hist-head">
         <span class="hist-v">${h.id}</span>
         <span class="hist-text">${h.user_input}</span>
       </div>
-      ${h.selected ? '<div class="hist-sel"><i class="ti ti-check" style="font-size:10px"></i> 已选中图片</div>' : ''}
+      ${h.selected ? `<div class="hist-sel"><i class="ti ti-check" style="font-size:10px"></i> 已选中图片${h.selected_count ? `（${h.selected_count}）` : ''}</div>` : ''}
+      ${(h.attachments && h.attachments.length) ? `
+        <div class="hist-attachments-label">附带图片：</div>
+        <div class="hist-attached-grid">
+          ${h.attachments.map((img) => {
+            return `
+              <div class="hist-attached-item" onclick="event.stopPropagation();showImageViewer('${img.url}', false, false)" style="cursor:pointer">
+                <img src="${img.url}" alt="attachment-${h.id}" loading="lazy">
+              </div>
+            `;
+          }).join('')}
+        </div>
+      ` : ''}
+      ${(h.selected_images && h.selected_images.length) ? `
+        <div class="hist-selected-label">已选图片：</div>
+        <div class="hist-attached-grid">
+          ${h.selected_images.map((img) => {
+            const selectable = currentNodeImageUrlSet.has(img.url);
+            const isSel = selectedImageUrls.has(img.url);
+            return `
+              <div class="hist-attached-item" onclick="event.stopPropagation();showImageViewer('${img.url}', ${isSel ? 'true' : 'false'}, ${selectable ? 'true' : 'false'})" style="cursor:pointer">
+                <img src="${img.url}" alt="hist-${h.id}" loading="lazy">
+              </div>
+            `;
+          }).join('')}
+        </div>
+      ` : ''}
       ${h.prompt ? `<div class="hist-prompt-toggle" onclick="event.stopPropagation();this.nextElementSibling.classList.toggle('show')">查看优化后 prompt ▾</div>
         <div class="hist-prompt">${h.prompt}</div>` : ''}
     </div>`).join('');
@@ -2191,21 +2341,34 @@ function renderPicked(history) {
   const box = document.getElementById('pickedContainer');
   if (!box) return;
 
-  const picked = (history || []).filter(h => h.selected_image && h.selected_image.url);
+  const picked = [];
+  (history || []).forEach((h) => {
+    const imgs = (h.selected_images || []).filter(img => img && img.url);
+    imgs.forEach((img, idx) => {
+      picked.push({
+        node_id: h.id,
+        user_input: h.user_input || '',
+        is_current: !!h.is_current,
+        url: img.url,
+        key: `${h.id}-${idx}-${img.url}`,
+      });
+    });
+  });
+
   if (!picked.length) {
     box.innerHTML = '<div class="picked-empty">暂无已选图片</div>';
     return;
   }
 
   box.innerHTML = `<div class="picked-list">${picked.map(h => `
-    <div class="picked-item ${h.is_current ? 'current' : ''}" data-node-id="${h.id}">
+    <div class="picked-item ${h.is_current ? 'current' : ''}" data-node-id="${h.node_id}" data-picked-key="${h.key}">
       <div style="position:relative">
-        <img class="picked-thumb" src="${h.selected_image.url}" alt="selected ${h.id}" loading="lazy">
-        <button class="picked-zoom-btn" onclick="event.stopPropagation();showImageViewer('${h.selected_image.url}', true)" title="大图查看">🔍</button>
+        <img class="picked-thumb" src="${h.url}" alt="selected ${h.node_id}" loading="lazy">
+        <button class="picked-zoom-btn" onclick="event.stopPropagation();showImageViewer('${h.url}', ${selectedImageUrls.has(h.url) ? 'true' : 'false'}, ${currentNodeImageUrlSet.has(h.url) ? 'true' : 'false'})" title="大图查看">🔍</button>
       </div>
       <div class="picked-meta">
-        <div class="picked-node">${h.id}</div>
-        <div class="picked-text">${h.user_input || ''}</div>
+        <div class="picked-node">${h.node_id}</div>
+        <div class="picked-text">${h.user_input}</div>
       </div>
     </div>
   `).join('')}</div>`;
@@ -2256,23 +2419,22 @@ function renderStylePicker(candidates) {
 
   if (!styleCandidatePool.length) {
     box.innerHTML = '<div class="picked-empty">暂无可选风格</div>';
-    styleSelectedSet = new Set();
     return;
   }
 
-  const selectedByWeight = new Set(
-    list
-      .filter(item => item && item.state === 'prefer')
-      .map(item => item.keyword)
-  );
-
-  const nextSet = new Set();
-  for (const kw of styleCandidatePool) {
-    if (styleSelectedSet.has(kw) || selectedByWeight.has(kw)) {
-      nextSet.add(kw);
+  // 只有当 localStorage 没有保存任何选择时才从权重初始化
+  const savedArr = JSON.parse(localStorage.getItem(STYLE_KEY) || 'null');
+  if (!savedArr) {
+    const selectedByWeight = new Set(
+      list
+        .filter(item => item && item.state === 'prefer')
+        .map(item => item.keyword)
+    );
+    for (const kw of selectedByWeight) {
+      styleSelectedSet.add(kw);
     }
+    saveStyleSelection();
   }
-  styleSelectedSet = nextSet;
 
   box.innerHTML = '';
   for (const kw of styleCandidatePool) {
@@ -2280,41 +2442,54 @@ function renderStylePicker(candidates) {
     btn.type = 'button';
     btn.className = 'style-chip' + (styleSelectedSet.has(kw) ? ' on' : '');
     btn.textContent = kw;
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       if (styleSelectedSet.has(kw)) styleSelectedSet.delete(kw);
       else styleSelectedSet.add(kw);
       btn.classList.toggle('on');
+      saveStyleSelection();
+      // 自动应用风格选择（防抖）
+      await autoApplyStyle();
     });
     box.appendChild(btn);
   }
 }
 
+function saveStyleSelection() {
+  localStorage.setItem(STYLE_KEY, JSON.stringify(Array.from(styleSelectedSet)));
+}
+
+function loadStyleSelection() {
+  const saved = localStorage.getItem(STYLE_KEY);
+  if (saved) {
+    try {
+      const arr = JSON.parse(saved);
+      if (Array.isArray(arr)) styleSelectedSet = new Set(arr);
+    } catch (e) {}
+  }
+}
+
 function resetStyleSelection() {
   styleSelectedSet = new Set();
+  saveStyleSelection();
   renderStylePicker(styleCandidatePool.map(keyword => ({keyword, state: 'neutral'})));
 }
 
-async function applyStyleSelection() {
-  if (!styleCandidatePool.length) {
-    toast('暂无可应用的风格标签');
-    return;
-  }
-  const selected = Array.from(styleSelectedSet);
-  const res = await fetch('/api/style/select', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      candidate_keywords: styleCandidatePool,
-      selected_keywords: selected
-    })
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    toast('应用风格选择失败: ' + (err.detail || res.status));
-    return;
-  }
-  toast('风格偏好已应用（未勾选视为不要）');
-  await refreshState();
+let styleApplyTimer = null;
+async function autoApplyStyle() {
+  // 防抖：500ms内的多次点击只执行一次
+  if (styleApplyTimer) clearTimeout(styleApplyTimer);
+  styleApplyTimer = setTimeout(async () => {
+    if (!styleCandidatePool.length) return;
+    const selected = Array.from(styleSelectedSet);
+    await fetch('/api/style/select', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        candidate_keywords: styleCandidatePool,
+        selected_keywords: selected
+      })
+    });
+  }, 500);
 }
 
 // ── Load session ──────────────────────────────

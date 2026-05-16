@@ -50,6 +50,8 @@ def _new_node(node_id: str, parent_id: Optional[str], user_input: str) -> dict:
         "user_input": user_input,
         "prompt":     "",          # 由Agent填写
         "images":     [],
+        "attachments": [],
+        "selected_list": [],
         "selected":   None,
         "created_at": datetime.now().isoformat(),
     }
@@ -70,6 +72,7 @@ def new_session(project_name: str) -> dict:
         "reference_images": [],
         "save_path":      str(SESSIONS_DIR / f"{_slugify(project_name)}_{_ts()}.json"),
     }
+    _migrate_session_schema(session)
     _save(session)
     return session
 
@@ -77,7 +80,9 @@ def new_session(project_name: str) -> dict:
 def load_session(path: str) -> dict:
     """从JSON文件加载会话。"""
     with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+        s = json.load(f)
+    _migrate_session_schema(s)
+    return s
 
 
 def list_sessions() -> list[dict]:
@@ -121,11 +126,13 @@ def add_node(session: dict, user_input: str, parent_id: Optional[str] = None) ->
 
 
 def select_image(session: dict, image_url: str) -> None:
-    """在当前节点标记选中图片，并更新风格权重。传入空字符串则取消选择。"""
+    """在当前节点切换选中状态（多选）：已选再点取消，未选则加入。"""
     node = _current(session)
+    _ensure_node_selection(node)
     
-    # 空字符串表示取消选择
+    # 空字符串表示清空所有选中
     if not image_url:
+        node["selected_list"] = []
         node["selected"] = None
         _save(session)
         return
@@ -133,8 +140,16 @@ def select_image(session: dict, image_url: str) -> None:
     valid_urls = {img.get("url") for img in node["images"] if isinstance(img, dict)}
     if image_url not in valid_urls:
         raise ValueError("只能选择当前节点下的图片")
-    node["selected"] = image_url
-    _update_style_weights(session, node, image_url)
+
+    selected_list = node.get("selected_list", [])
+    if image_url in selected_list:
+        selected_list = [u for u in selected_list if u != image_url]
+    else:
+        selected_list = selected_list + [image_url]
+        _update_style_weights(session, node, image_url)
+
+    node["selected_list"] = selected_list
+    node["selected"] = selected_list[0] if selected_list else None
     _save(session)
 
 
@@ -154,11 +169,45 @@ def add_images(session: dict, node_id: str, images: list[dict]) -> None:
     _save(session)
 
 
+def add_attachments(session: dict, node_id: str, attachments: list[dict]) -> None:
+    """保存节点附带图片（用户上传）."""
+    ok_attachments = [
+        img for img in attachments
+        if isinstance(img, dict) and img.get("url")
+    ]
+    if not ok_attachments:
+        return
+    node = session["nodes"][node_id]
+    if not isinstance(node.get("attachments"), list):
+        node["attachments"] = []
+    node["attachments"].extend(ok_attachments)
+    _save(session)
+
+
 def switch_node(session: dict, node_id: str) -> None:
     """切换当前活跃节点（用于回退/切换分支）。"""
     if node_id not in session["nodes"]:
         raise ValueError(f"节点 {node_id} 不存在")
     session["current_node"] = node_id
+    _save(session)
+
+
+def remove_node(session: dict, node_id: str) -> None:
+    """删除节点（用于生成失败时清理）。"""
+    if node_id not in session["nodes"]:
+        return
+    node = session["nodes"][node_id]
+    # 从父节点的children中移除
+    parent_id = node.get("parent")
+    if parent_id and parent_id in session["nodes"]:
+        parent = session["nodes"][parent_id]
+        if node_id in parent.get("children", []):
+            parent["children"].remove(node_id)
+    # 删除节点
+    session["nodes"].pop(node_id, None)
+    # 如果删除的是当前节点，切换到父节点
+    if session["current_node"] == node_id:
+        session["current_node"] = parent_id or "root"
     _save(session)
 
 
@@ -197,15 +246,18 @@ def build_context_for_agent(session: dict, new_user_input: str, node_id: Optiona
     history_steps = []
     selected_images = []
     for node in path:
-        selected_img = _get_selected_image(node)
+        _ensure_node_selection(node)
+        selected_imgs = _get_selected_images(node)
         step = {
             "user_input":  node["user_input"],
             "prompt_used": node["prompt"],
-            "selected":    node["selected"],
-            "selected_image": selected_img,
+            "selected":    bool(selected_imgs),
+            "selected_urls": [img.get("url") for img in selected_imgs if img.get("url")],
+            "selected_image": selected_imgs[0] if selected_imgs else None,  # legacy
+            "selected_images": selected_imgs,
         }
         history_steps.append(step)
-        if selected_img:
+        for selected_img in selected_imgs:
             selected_images.append({
                 "node_id": node["id"],
                 "node_user_input": node["user_input"],
@@ -214,10 +266,13 @@ def build_context_for_agent(session: dict, new_user_input: str, node_id: Optiona
                 "revised_prompt": selected_img.get("revised_prompt"),
             })
 
+    # 传给模型的风格偏好严格限定为 root→current 路径，不混入其他分支
+    path_style_weights = _build_path_style_weights(path)
+
     return {
         "history":         history_steps,        # root→current的完整历史
         "new_user_input":  new_user_input,        # 用户本次输入
-        "style_weights":   session["style_weights"],
+        "style_weights":   path_style_weights,
         "reference_images": [r["path"] for r in session["reference_images"]],
         "selected_images": selected_images,
         "project_name":    session["project"],
@@ -230,10 +285,13 @@ def get_tree_for_ui(session: dict) -> dict:
     """
     def _build(node_id):
         node = session["nodes"][node_id]
+        _ensure_node_selection(node)
+        selected_count = len(node.get("selected_list", []))
         return {
             "id":         node["id"],
             "label":      node["user_input"][:30] + ("…" if len(node["user_input"]) > 30 else ""),
-            "selected":   node["selected"] is not None,
+            "selected":   selected_count > 0,
+            "selected_count": selected_count,
             "images":     len(node["images"]),
             "is_current": node["id"] == session["current_node"],
             "children":   [_build(c) for c in node["children"]],
@@ -415,10 +473,15 @@ def get_style_candidates(session: dict, top_n: int = 14) -> list[dict]:
 
     score_map: dict[str, float] = {}
     for node in path[-6:]:
+        selected_revised = " ".join(
+            img.get("revised_prompt", "")
+            for img in _get_selected_images(node)
+            if isinstance(img, dict)
+        )
         text = " ".join([
             node.get("user_input", ""),
             node.get("prompt", ""),
-            (_get_selected_image(node) or {}).get("revised_prompt", ""),
+            selected_revised,
         ])
         for kw, score in _extract_style_scores(text).items():
             score_map[kw] = score_map.get(kw, 0.0) + abs(float(score))
@@ -513,14 +576,99 @@ def _current(session: dict) -> dict:
     return session["nodes"][session["current_node"]]
 
 
+def get_node_selected_urls(session: dict, node_id: Optional[str] = None) -> list[str]:
+    node = session["nodes"][node_id or session["current_node"]]
+    _ensure_node_selection(node)
+    return [u for u in node.get("selected_list", []) if isinstance(u, str) and u]
+
+
+def get_node_selected_images(session: dict, node_id: Optional[str] = None) -> list[dict]:
+    node = session["nodes"][node_id or session["current_node"]]
+    return _get_selected_images(node)
+
+
+def get_node_attachments(session: dict, node_id: Optional[str] = None) -> list[dict]:
+    node = session["nodes"][node_id or session["current_node"]]
+    attachments = node.get("attachments", [])
+    if not isinstance(attachments, list):
+        return []
+    return [img for img in attachments if isinstance(img, dict) and img.get("url")]
+
+
 def _get_selected_image(node: dict) -> Optional[dict]:
-    selected_url = node.get("selected")
-    if not selected_url:
-        return None
+    imgs = _get_selected_images(node)
+    return imgs[0] if imgs else None
+
+
+def _get_selected_images(node: dict) -> list[dict]:
+    _ensure_node_selection(node)
+    selected_urls = set(node.get("selected_list", []))
+    if not selected_urls:
+        return []
+    out = []
     for img in node.get("images", []):
-        if isinstance(img, dict) and img.get("url") == selected_url:
-            return img
-    return None
+        if isinstance(img, dict) and img.get("url") in selected_urls:
+            out.append(img)
+    # 按 selected_list 的顺序返回
+    by_url = {img.get("url"): img for img in out if img.get("url")}
+    ordered = [by_url[u] for u in node.get("selected_list", []) if u in by_url]
+    return ordered
+
+
+def _ensure_node_selection(node: dict) -> None:
+    raw_list = node.get("selected_list")
+    if not isinstance(raw_list, list):
+        raw_list = []
+
+    if node.get("selected") and node.get("selected") not in raw_list:
+        raw_list.insert(0, node.get("selected"))
+
+    cleaned = []
+    seen = set()
+    for u in raw_list:
+        if not isinstance(u, str) or not u:
+            continue
+        if u in seen:
+            continue
+        seen.add(u)
+        cleaned.append(u)
+
+    node["selected_list"] = cleaned
+    node["selected"] = cleaned[0] if cleaned else None
+
+
+def _migrate_session_schema(session: dict) -> None:
+    nodes = session.get("nodes", {}) if isinstance(session, dict) else {}
+    for node in nodes.values():
+        if not isinstance(node, dict):
+            continue
+        if not isinstance(node.get("attachments"), list):
+            node["attachments"] = []
+        _ensure_node_selection(node)
+
+
+def _build_path_style_weights(path: list[dict]) -> dict:
+    """
+    仅基于 root→current 路径构建风格权重，避免其他分支污染当前提示词。
+    """
+    weights: dict[str, float] = {}
+    for node in path:
+        _ensure_node_selection(node)
+        selected_imgs = _get_selected_images(node)
+        selected_text = " ".join(
+            img.get("revised_prompt", "")
+            for img in selected_imgs
+            if isinstance(img, dict)
+        )
+        text = " ".join([
+            node.get("user_input", ""),
+            node.get("prompt", ""),
+            selected_text,
+        ])
+        scores = _extract_style_scores(text)
+        for kw, score in scores.items():
+            _bump_style_weight(weights, kw, 0.18 * float(score))
+    return weights
 
 
 def _save(session: dict) -> None:

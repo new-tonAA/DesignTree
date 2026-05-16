@@ -141,6 +141,9 @@ def delete_project(req: DeleteProjectReq):
 def get_state():
     s = _require_session()
     cur = s["nodes"][s["current_node"]]
+    current_selected_urls = sm.get_node_selected_urls(s)
+    current_attached_images = sm.get_node_selected_images(s)
+    current_attachments = sm.get_node_attachments(s)
     return {
         "project":       s["project"],
         "current_node":  s["current_node"],
@@ -153,7 +156,10 @@ def get_state():
         "path_tags":     _path_tags(s),
         "current_images": cur["images"],
         "current_prompt": cur["prompt"],
-        "current_selected": cur["selected"],
+        "current_selected": cur.get("selected"),  # legacy
+        "current_selecteds": current_selected_urls,
+        "current_attached_images": current_attached_images,
+        "current_attachments": current_attachments,
     }
 
 
@@ -165,6 +171,7 @@ class GenerateReq(BaseModel):
     parent_node_id: Optional[str] = None
     optimize_prompt: bool = True
     model_memory: Optional[str] = None
+    prompt_images: Optional[list[dict]] = None  # 附带图片
 
 class PolishReq(BaseModel):
     user_input: str
@@ -195,6 +202,17 @@ def generate(req: GenerateReq):
     if req.parent_node_id and req.parent_node_id not in s["nodes"]:
         raise HTTPException(400, f"节点 {req.parent_node_id} 不存在")
 
+    # 先创建节点（确保刷新后不丢失）
+    try:
+        node = sm.add_node(s, req.user_input, req.parent_node_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    node_id = node["id"]
+
+    # 保存用户上传的附带图片
+    if req.prompt_images:
+        sm.add_attachments(s, node_id, req.prompt_images)
+
     try:
         context = sm.build_context_for_agent(s, req.user_input, req.parent_node_id)
     except ValueError as e:
@@ -215,6 +233,8 @@ def generate(req: GenerateReq):
     else:
         prompt = agent.compose_prompt_from_context(context)
 
+    sm.set_node_prompt(s, node_id, prompt)
+
     images = agent.generate_images(
         prompt, n=req.n,
         save_dir=Path(__file__).parent / "static" / "uploads",
@@ -224,18 +244,14 @@ def generate(req: GenerateReq):
         if isinstance(img, dict) and img.get("url")
     ]
     if not ok_images:
+        # 生成失败，删除空节点
+        sm.remove_node(s, node_id)
         first_error = next(
             (img.get("error") for img in images if isinstance(img, dict) and img.get("error")),
             "未生成任何可用图片"
         )
-        raise HTTPException(502, f"本次生成失败，未创建新节点：{first_error}")
+        raise HTTPException(502, f"本次生成失败：{first_error}")
 
-    try:
-        node = sm.add_node(s, req.user_input, req.parent_node_id)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    node_id = node["id"]
-    sm.set_node_prompt(s, node_id, prompt)
     sm.add_images(s, node_id, images)
 
     return {
@@ -388,23 +404,40 @@ def set_api_keys(req: SetApiKeysReq):
 def _history_for_ui(s: dict) -> list:
     out = []
     for n in s["nodes"].values():
-        selected_image = None
-        selected_url = n.get("selected")
-        if selected_url:
-            for img in n.get("images", []):
-                if isinstance(img, dict) and img.get("url") == selected_url:
-                    selected_image = img
-                    break
+        selected_images = []
+        selected_urls = []
+        if isinstance(n.get("selected_list"), list):
+            selected_urls = [u for u in n.get("selected_list", []) if isinstance(u, str) and u]
+        elif n.get("selected"):
+            selected_urls = [n.get("selected")]
+
+        if selected_urls:
+            by_url = {
+                img.get("url"): img
+                for img in n.get("images", [])
+                if isinstance(img, dict) and img.get("url")
+            }
+            selected_images = [by_url[u] for u in selected_urls if u in by_url]
+        selected_image = selected_images[0] if selected_images else None
+
+        # 获取节点的附带图片
+        attachments = []
+        if isinstance(n.get("attachments"), list):
+            attachments = [img for img in n.get("attachments", []) if isinstance(img, dict) and img.get("url")]
 
         out.append({
             "id":         n["id"],
             "user_input": n["user_input"],
             "prompt":     n["prompt"],
-            "selected":   selected_url,
+            "selected":   bool(selected_urls),
+            "selected_count": len(selected_images),
+            "selected_urls": selected_urls,
+            "selected_images": selected_images,
             "selected_image": selected_image,
             "images":     len(n["images"]),
             "is_current": n["id"] == s["current_node"],
             "parent":     n["parent"],
+            "attachments": attachments,
         })
     return out
 
