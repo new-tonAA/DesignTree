@@ -842,10 +842,10 @@ textarea#userInput::placeholder { color: var(--dim); }
     <div style="margin-bottom:20px">
       <div style="font-size:12px;font-weight:500;color:var(--muted);margin-bottom:10px">主题模式</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <button class="theme-btn" data-theme="" onclick="setTheme('')" style="flex:1;min-width:70px;padding:8px 0;border-radius:6px;background:var(--bg3);border:1px solid var(--line2);cursor:pointer;color:var(--text);font-size:12px;display:flex;align-items:center;justify-content:center;gap:4px">🌙 深色</button>
-        <button class="theme-btn" data-theme="midnight" onclick="setTheme('midnight')" style="flex:1;min-width:70px;padding:8px 0;border-radius:6px;background:var(--bg3);border:1px solid var(--line2);cursor:pointer;color:var(--text);font-size:12px;display:flex;align-items:center;justify-content:center;gap:4px">🌙 午夜</button>
-        <button class="theme-btn" data-theme="dusk" onclick="setTheme('dusk')" style="flex:1;min-width:70px;padding:8px 0;border-radius:6px;background:var(--bg3);border:1px solid var(--line2);cursor:pointer;color:var(--text);font-size:12px;display:flex;align-items:center;justify-content:center;gap:4px">🌆 傍晚</button>
-        <button class="theme-btn" data-theme="light" onclick="setTheme('light')" style="flex:1;min-width:70px;padding:8px 0;border-radius:6px;background:var(--bg3);border:1px solid var(--line2);cursor:pointer;color:var(--text);font-size:12px;display:flex;align-items:center;justify-content:center;gap:4px">☀️ 浅色</button>
+        <button class="theme-btn" data-theme="" onclick="setTheme('')" style="flex:1;min-width:70px;padding:8px 0;border-radius:6px;background:#0e0f11;border:2px solid #333;color:#e8e6e0;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;gap:4px">🌙 深色</button>
+        <button class="theme-btn" data-theme="midnight" onclick="setTheme('midnight')" style="flex:1;min-width:70px;padding:8px 0;border-radius:6px;background:#1a1d23;border:2px solid #3a3f48;color:#d4d4d4;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;gap:4px">🌙 午夜</button>
+        <button class="theme-btn" data-theme="dusk" onclick="setTheme('dusk')" style="flex:1;min-width:70px;padding:8px 0;border-radius:6px;background:#2d2535;border:2px solid #5a4d65;color:#e8e0f0;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;gap:4px">🌆 傍晚</button>
+        <button class="theme-btn" data-theme="light" onclick="setTheme('light')" style="flex:1;min-width:70px;padding:8px 0;border-radius:6px;background:#f5f5f5;border:2px solid #ccc;color:#1a1a1a;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;gap:4px">☀️ 浅色</button>
       </div>
     </div>
 
@@ -868,6 +868,10 @@ textarea#userInput::placeholder { color: var(--dim); }
         <div>
           <div style="font-size:11px;color:var(--dim);margin-bottom:4px">DeepSeek</div>
           <input type="text" id="keyDeepSeek" placeholder="sk-..." style="width:100%;padding:8px 10px;background:var(--bg3);border:1px solid var(--line2);border-radius:6px;color:var(--text);font-size:12px;outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--line2)'">
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--dim);margin-bottom:4px">火山引擎</div>
+          <input type="text" id="keyVolcengine" placeholder="ark-..." style="width:100%;padding:8px 10px;background:var(--bg3);border:1px solid var(--line2);border-radius:6px;color:var(--text);font-size:12px;outline:none" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--line2)'">
         </div>
       </div>
     </div>
@@ -2152,6 +2156,7 @@ function showSettingsModal() {
   document.getElementById('keyOpenRouter').value = keys.openrouter || '';
   document.getElementById('keyV3').value = keys.v3 || '';
   document.getElementById('keyDeepSeek').value = keys.deepseek || '';
+  document.getElementById('keyVolcengine').value = keys.volcengine || '';
   
   document.getElementById('settingsModal').style.display = 'flex';
 }
@@ -2167,10 +2172,16 @@ function setTheme(theme) {
     document.documentElement.classList.add('theme-' + theme);
   }
   localStorage.setItem('archai_theme', theme);
-  
-  // 更新按钮状态
+
+  // 更新按钮状态 - 选中用亮色边框，未选中用默认边框
   document.querySelectorAll('.theme-btn').forEach(btn => {
-    btn.style.borderColor = btn.dataset.theme === theme ? 'var(--accent)' : 'var(--line2)';
+    const isSelected = btn.dataset.theme === theme;
+    const defaultBorder = btn.getAttribute('data-default-border') || btn.style.borderColor.split(' ')[2] || '#333';
+    if (isSelected) {
+      btn.style.boxShadow = '0 0 0 2px var(--accent)';
+    } else {
+      btn.style.boxShadow = 'none';
+    }
   });
 }
 
@@ -2181,6 +2192,7 @@ async function saveSettings() {
     openrouter: document.getElementById('keyOpenRouter').value.trim(),
     v3: document.getElementById('keyV3').value.trim(),
     deepseek: document.getElementById('keyDeepSeek').value.trim(),
+    volcengine: document.getElementById('keyVolcengine').value.trim(),
   };
   localStorage.setItem('archai_api_keys', JSON.stringify(keys));
   
