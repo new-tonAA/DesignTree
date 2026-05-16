@@ -159,15 +159,18 @@ textarea#userInput {
   min-height: 64px;
   max-height: 350px;
   resize: none; overflow-y: auto;
-  background: linear-gradient(180deg, rgba(34,36,40,0.95) 0%, rgba(26,28,32,0.98) 100%);
+  background: var(--bg3);
   color: var(--text);
   border: 1px solid var(--line2);
   border-radius: 12px;
-  padding: 12px 156px 50px 14px;
+  padding: 12px 14px;
   font-size: 13px;
   font-family: var(--sans);
   line-height: 1.5; outline: none; transition: border-color .15s;
-  flex-shrink: 0;  /* textarea高度固定，不随flex压缩 */
+  flex-shrink: 0;
+}
+.theme-light textarea#userInput {
+  background: #ffffff;
 }
 textarea#userInput:focus {
   border-color: var(--accent);
@@ -1346,86 +1349,99 @@ function downloadFromViewer() {
   a.click();
 }
 
-// ── Voice input ───────────────────────────────
-let mediaRecorder = null;
-let audioChunks = [];
+// ── Voice input (实时转写) ─────────────────────
+let recognition = null;
 let isRecording = false;
+let voiceInputStartPos = 0;
+let voiceInputText = '';
 
 async function startVoiceInput() {
   const btn = document.getElementById('voiceBtn');
+  const input = document.getElementById('userInput');
   
   if (!isRecording) {
-    // 开始录音
+    // 检查浏览器支持
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      toast('浏览器不支持语音识别，请使用Chrome');
+      return;
+    }
+    
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorder = new MediaRecorder(stream);
-      audioChunks = [];
+      recognition = new SpeechRecognition();
+      recognition.lang = 'zh-CN';
+      recognition.continuous = true;
+      recognition.interimResults = true;
       
-      mediaRecorder.ondataavailable = (e) => {
-        audioChunks.push(e.data);
+      // 记录开始位置
+      voiceInputStartPos = input.selectionStart;
+      voiceInputText = input.value.substring(0, voiceInputStartPos);
+      if (voiceInputText && !voiceInputText.endsWith(' ')) {
+        voiceInputText += ' ';
+        voiceInputStartPos++;
+      }
+      
+      recognition.onresult = (event) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+        
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+        
+        // 实时更新输入框
+        if (finalTranscript) {
+          voiceInputText += finalTranscript + ' ';
+        }
+        input.value = voiceInputText + interimTranscript;
+        saveInput();
       };
       
-      mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-        await sendAudioToServer(audioBlob);
-        stream.getTracks().forEach(track => track.stop());
+      recognition.onerror = (event) => {
+        if (event.error !== 'no-speech') {
+          toast('语音识别错误: ' + event.error);
+        }
       };
       
-      mediaRecorder.start();
+      recognition.onend = () => {
+        if (isRecording) {
+          // 自动重启（用户没有手动停止）
+          try {
+            recognition.start();
+          } catch (e) {}
+        }
+      };
+      
+      recognition.start();
       isRecording = true;
       btn.textContent = '⏹ 停止';
       btn.style.background = 'var(--red)';
       btn.style.color = '#fff';
-      toast('开始录音...');
+      toast('开始语音输入...');
     } catch (err) {
-      toast('无法访问麦克风: ' + err.message);
+      toast('无法启动语音识别: ' + err.message);
     }
   } else {
     // 停止录音
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-      mediaRecorder.stop();
+    if (recognition) {
+      isRecording = false;
+      recognition.stop();
+      recognition = null;
     }
-    isRecording = false;
     btn.textContent = '🎤 语音';
     btn.style.background = 'var(--bg3)';
-    btn.style.color = 'var(--muted)';
-  }
-}
-
-async function sendAudioToServer(audioBlob) {
-  const formData = new FormData();
-  formData.append('audio', audioBlob, 'recording.webm');
-  
-  const btn = document.getElementById('voiceBtn');
-  btn.textContent = '⏳ 识别中';
-  btn.disabled = true;
-  
-  try {
-    const res = await fetch('/api/transcribe', {
-      method: 'POST',
-      body: formData
-    });
+    btn.style.color = 'var(--text)';
     
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || '语音识别失败');
-    }
-    
-    const data = await res.json();
-    const text = data.text || '';
-    
-    // 将识别结果添加到输入框
+    // 清理末尾空格
     const input = document.getElementById('userInput');
-    const currentText = input.value.trim();
-    input.value = currentText ? currentText + ' ' + text : text;
+    input.value = input.value.trim();
     saveInput();
-    
-    toast('语音识别完成');
-  } catch (err) {
-    toast('识别失败: ' + err.message);
-  } finally {
-    btn.textContent = '🎤 语音';
-    btn.disabled = false;
+    toast('语音输入结束');
   }
 }
 
