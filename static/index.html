@@ -47,6 +47,20 @@
   --dim:    #999999;
   --bluel:  rgba(91,143,191,0.1);
 }
+
+/* 午夜主题 */
+.theme-midnight {
+  --bg:     #1a1d23;
+  --bg2:    #22262e;
+  --bg3:    #2a2f38;
+  --bg4:    #363c48;
+  --line:   rgba(255,255,255,0.06);
+  --line2:  rgba(255,255,255,0.10);
+  --text:   #d4d4d4;
+  --muted:  #8a8a8a;
+  --dim:    #5a5a5a;
+  --bluel:  rgba(91,143,191,0.08);
+}
 html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; }
 
 /* ── Layout ─────────────────────────────────── */
@@ -171,6 +185,10 @@ textarea#userInput {
 }
 .theme-light textarea#userInput {
   background: #ffffff;
+}
+
+.theme-midnight textarea#userInput {
+  background: var(--bg3);
 }
 textarea#userInput:focus {
   border-color: var(--accent);
@@ -747,7 +765,7 @@ textarea#userInput::placeholder { color: var(--dim); }
 
 <!-- Settings Modal -->
 <div id="settingsModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:1003;align-items:center;justify-content:center">
-  <div style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;padding:20px;width:400px;max-height:80vh;overflow-y:auto">
+  <div style="background:var(--bg2);border:1px solid var(--line2);border-radius:12px;padding:20px;width:400px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <div style="font-size:16px;font-weight:600;color:var(--text)">设置</div>
       <button style="width:28px;height:28px;background:var(--bg4);border:1px solid var(--line2);border-radius:50%;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center" onclick="hideSettingsModal()">✕</button>
@@ -756,9 +774,10 @@ textarea#userInput::placeholder { color: var(--dim); }
     <!-- 主题色 -->
     <div style="margin-bottom:20px">
       <div style="font-size:12px;font-weight:500;color:var(--muted);margin-bottom:10px">主题模式</div>
-      <div style="display:flex;gap:10px">
-        <button class="theme-btn" data-theme="" onclick="setTheme('')" style="padding:8px 16px;border-radius:6px;background:var(--bg3);border:2px solid var(--line2);cursor:pointer;color:var(--text);font-size:12px">🌙 深色</button>
-        <button class="theme-btn" data-theme="light" onclick="setTheme('light')" style="padding:8px 16px;border-radius:6px;background:var(--bg3);border:2px solid var(--line2);cursor:pointer;color:var(--text);font-size:12px">☀️ 浅色</button>
+      <div style="display:flex;gap:8px">
+        <button class="theme-btn" data-theme="" onclick="setTheme('')" style="flex:1;padding:8px 0;border-radius:6px;background:var(--bg3);border:1px solid var(--line2);cursor:pointer;color:var(--text);font-size:12px;display:flex;align-items:center;justify-content:center;gap:4px">🌙 深色</button>
+        <button class="theme-btn" data-theme="midnight" onclick="setTheme('midnight')" style="flex:1;padding:8px 0;border-radius:6px;background:var(--bg3);border:1px solid var(--line2);cursor:pointer;color:var(--text);font-size:12px;display:flex;align-items:center;justify-content:center;gap:4px">🌙 午夜</button>
+        <button class="theme-btn" data-theme="light" onclick="setTheme('light')" style="flex:1;padding:8px 0;border-radius:6px;background:var(--bg3);border:1px solid var(--line2);cursor:pointer;color:var(--text);font-size:12px;display:flex;align-items:center;justify-content:center;gap:4px">☀️ 浅色</button>
       </div>
     </div>
 
