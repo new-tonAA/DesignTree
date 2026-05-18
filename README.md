@@ -2,9 +2,9 @@
 
 # 🌳 DesignTree
 
-**AI-Powered Architectural Design Studio**
+**AI-Powered Design Studio**
 
-An intelligent image generation tool for architectural design with visual design tree management
+An intelligent image generation tool for design with visual design tree management
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com/)
