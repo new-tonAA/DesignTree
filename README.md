@@ -17,7 +17,7 @@ An intelligent image generation tool for design with visual design tree manageme
 
 ## Features
 
-- **🌳 Visual Design Tree** - Visualize design iteration paths with rollback, branching, and node switching
+- **🌳 Visual Tree** - Visualize design iteration paths with rollback, branching, and node switching
 - **🔄 Multi-Platform Support** - OpenAI, OpenRouter, V3.CM, Volcengine, DeepSeek
 - **🎨 Multiple Models** - gptimage2, gpt-image-1, BananaPro, Gemini and more
 - **🧠 Style Learning** - Automatically learn style preferences from selected images
