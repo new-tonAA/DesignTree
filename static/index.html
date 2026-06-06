@@ -1055,6 +1055,69 @@ textarea#userInput::placeholder { color: var(--dim); }
 </div>
 
 <script>
+// ── IndexedDB for image persistence ────────────
+const ImageDB = {
+  db: null,
+  async init() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open('ArchAI_Images', 1);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('images')) {
+          db.createObjectStore('images', { keyPath: 'key' });
+        }
+      };
+      req.onsuccess = (e) => { this.db = e.target.result; resolve(); };
+      req.onerror = (e) => { console.warn('IndexedDB not available'); resolve(); };
+    });
+  },
+  async saveImage(key, dataUrl) {
+    if (!this.db) return;
+    return new Promise((resolve) => {
+      const tx = this.db.transaction('images', 'readwrite');
+      tx.objectStore('images').put({ key, dataUrl, ts: Date.now() });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  },
+  async getImage(key) {
+    if (!this.db) return null;
+    return new Promise((resolve) => {
+      const tx = this.db.transaction('images', 'readonly');
+      const req = tx.objectStore('images').get(key);
+      req.onsuccess = () => resolve(req.result?.dataUrl || null);
+      req.onerror = () => resolve(null);
+    });
+  },
+  async saveBatch(images) {
+    if (!this.db || !images.length) return;
+    return new Promise((resolve) => {
+      const tx = this.db.transaction('images', 'readwrite');
+      const store = tx.objectStore('images');
+      images.forEach(img => { if (img.key && img.url) store.put({ key: img.key, dataUrl: img.url, ts: Date.now() }); });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  }
+};
+
+// ── User ID (multi-user isolation) ────────────
+let ARCHAI_USER_ID = localStorage.getItem('archai_user_id') || '';
+if (!ARCHAI_USER_ID) {
+  ARCHAI_USER_ID = 'u_' + crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+  localStorage.setItem('archai_user_id', ARCHAI_USER_ID);
+}
+
+// ── Fetch wrapper (adds user header) ──────────
+async function apiFetch(url, options = {}) {
+  if (!options.headers) options.headers = {};
+  if (!options.headers['X-User-Id']) options.headers['X-User-Id'] = ARCHAI_USER_ID;
+  if (!options.headers['Content-Type'] && !(options.body instanceof FormData)) {
+    options.headers['Content-Type'] = 'application/json';
+  }
+  return fetch(url, options);
+}
+
 // ── State ────────────────────────────────────
 let currentN = 4;
 let currentGridClass = 'g4';
@@ -1159,11 +1222,14 @@ function loadModelMemory() {
 
 // ── Init ──────────────────────────────────────
 async function init() {
+  // Initialize IndexedDB
+  await ImageDB.init();
+
   // Load config from localStorage first
   loadConfig();
 
   // Load platforms
-  const platformsRes = await fetch('/api/platforms').catch(() => null);
+  const platformsRes = await apiFetch('/api/platforms').catch(() => null);
   if (platformsRes) {
     platformsData = await platformsRes.json();
     const platformEl = document.getElementById('platformSelect');
@@ -1177,7 +1243,7 @@ async function init() {
   }
 
   // Load current config from server
-  const currentRes = await fetch('/api/current_platform').catch(() => null);
+  const currentRes = await apiFetch('/api/current_platform').catch(() => null);
   if (currentRes) {
     const current = await currentRes.json();
     // Prefer localStorage config if available
@@ -1226,9 +1292,8 @@ async function init() {
   if (savedKeys) {
     try {
       const keys = JSON.parse(savedKeys);
-      await fetch('/api/set_api_keys', {
+      await apiFetch('/api/set_api_keys', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
           openai: normalizeApiKey(keys.openai || ''),
           openrouter: normalizeApiKey(keys.openrouter || ''),
@@ -1300,16 +1365,14 @@ async function autoCreateProject() {
   // Set platform first
   const platform = document.getElementById('platformSelect').value;
   const imageModel = document.getElementById('imageModelSelect').value;
-  await fetch('/api/set_platform', {
+  await apiFetch('/api/set_platform', {
     method: 'POST',
-    headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({platform, image_model: imageModel})
   });
 
   // Create default project
-  const res = await fetch('/api/project/new', {
+  const res = await apiFetch('/api/project/new', {
     method: 'POST',
-    headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({project_name: '建筑设计项目'})
   });
   if (res.ok) {
@@ -1423,9 +1486,8 @@ async function applyImgPlatform() {
   const imageSelect = document.getElementById('imageModelSelect');
   const imageModel = normalizeImageModelAlias(imageSelect.value || imageSelect.options?.[0]?.value || '');
 
-  const res = await fetch('/api/set_platform', {
+  const res = await apiFetch('/api/set_platform', {
     method: 'POST',
-    headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({
       platform,
       image_model: imageModel
@@ -1450,9 +1512,8 @@ async function applyTxtPlatform() {
   const textSelect = document.getElementById('textModelSelect');
   const textModel = textSelect.value || textSelect.options?.[0]?.value || '';
 
-  const res = await fetch('/api/set_platform', {
+  const res = await apiFetch('/api/set_platform', {
     method: 'POST',
-    headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({
       text_platform: textPlatform,
       text_model: textModel
@@ -1476,9 +1537,8 @@ async function applyTxtPlatform() {
 
 async function newProjectFromUI(closeAfter = false) {
   showInputModal('新建项目', '建筑设计项目', async (path, name) => {
-    const res = await fetch('/api/project/new', {
+    const res = await apiFetch('/api/project/new', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({project_name: name})
     });
     if (!res.ok) {
@@ -1511,7 +1571,7 @@ async function loadProjectList() {
   if (!box) return;
   box.innerHTML = '<div style="font-size:12px;color:var(--dim);padding:8px">加载中...</div>';
 
-  const res = await fetch('/api/project/list').catch(() => null);
+  const res = await apiFetch('/api/project/list').catch(() => null);
   if (!res || !res.ok) {
     box.innerHTML = '<div style="font-size:12px;color:var(--red);padding:8px">项目列表加载失败</div>';
     return;
@@ -1587,9 +1647,8 @@ function hideConfirmModal() {
 
 async function confirmDelete() {
   if (!_deletePath) return;
-  const res = await fetch('/api/project/delete', {
+  const res = await apiFetch('/api/project/delete', {
     method: 'POST',
-    headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({path: _deletePath})
   });
   hideConfirmModal();
@@ -1604,9 +1663,8 @@ async function confirmDelete() {
 }
 
 async function doRename(path, newName) {
-  const res = await fetch('/api/project/rename', {
+  const res = await apiFetch('/api/project/rename', {
     method: 'POST',
-    headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({path, new_name: newName})
   });
   if (!res.ok) {
@@ -1648,9 +1706,8 @@ async function polishPrompt() {
   btn.innerHTML = '<i class="ti ti-loader"></i> 润色中...';
 
   try {
-    const res = await fetch('/api/polish_prompt', {
+    const res = await apiFetch('/api/polish_prompt', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({user_input: input})
     });
 
@@ -1772,7 +1829,7 @@ function downloadFromViewer() {
   if (!viewerImageUrl) return;
   const a = document.createElement('a');
   a.href = viewerImageUrl;
-  a.download = viewerImageUrl.split('/').pop() || 'image.png';
+  a.download = 'archai_image.png';
   a.click();
 }
 
@@ -2063,9 +2120,8 @@ async function switchToNode(nodeId) {
   document.querySelector(`.tree-node[data-id="${nodeId}"]`)?.classList.add('current');
   document.querySelector(`.hist-item[data-node-id="${nodeId}"]`)?.classList.add('current');
 
-  const res = await fetch('/api/switch_node', {
+  const res = await apiFetch('/api/switch_node', {
     method: 'POST',
-    headers: {'Content-Type':'application/json'},
     body: JSON.stringify({node_id: nodeId}),
   });
   if (!res.ok) {
@@ -2078,7 +2134,7 @@ async function switchToNode(nodeId) {
 
 
 async function refreshState() {
-  const res = await fetch('/api/project/state');
+  const res = await apiFetch('/api/project/state');
   if (!res.ok) return;
   const s = await res.json();
 
@@ -2224,8 +2280,8 @@ async function generate() {
       prompt_images: promptImages.map(img => ({ url: img.data, name: img.name }))  // 发送附带图片
     };
 
-    const res = await fetch('/api/generate', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
+    const res = await apiFetch('/api/generate', {
+      method: 'POST',
       body: JSON.stringify(bodyData)
     });
 
@@ -2246,7 +2302,11 @@ async function generate() {
       return;
     }
 
-    await res.json();
+    const genResult = await res.json();
+    // 将图片 data URL 存入 IndexedDB（持久化到用户本地）
+    if (genResult.images && genResult.images.length) {
+      await ImageDB.saveBatch(genResult.images);
+    }
     document.getElementById('userInput').value = '';
     document.getElementById('polishStatus').style.display = 'none';
     syncComposerTextareaHeight();
@@ -2309,20 +2369,49 @@ function renderImages(images, selectedUrls = []) {
         </div>
       </div>`;
     const isSel = selectedSet.has(img.url);
+    const safeUrl = img.url.replace(/'/g, "\\'");
     return `
-      <div class="img-card ${isSel ? 'sel' : ''}" onclick="selectImage(this,'${img.url}')">
-        <img src="${img.url}" alt="图${i+1}" loading="lazy">
-        <button class="img-zoom-btn" onclick="event.stopPropagation();showImageViewer('${img.url}', ${isSel ? 'true' : 'false'}, true)" title="大图查看">
+      <div class="img-card ${isSel ? 'sel' : ''}" onclick="selectImage(this,'${safeUrl}')">
+        <img src="${img.url}" alt="图${i+1}" loading="lazy" data-img-key="${img.key || ''}" onerror="onImgError(this)">
+        <button class="img-zoom-btn" onclick="event.stopPropagation();showImageViewer('${safeUrl}', ${isSel ? 'true' : 'false'}, true)" title="大图查看">
           🔍
         </button>
       </div>`;
   }).join('');
+
+  // 后台从 IndexedDB 补充加载图片（如果服务器缓存过期）
+  grid.querySelectorAll('img[data-img-key]').forEach(async (el) => {
+    const key = el.dataset.imgKey;
+    if (!key || !el.src.includes('/api/image/')) return;
+    // 先尝试服务器缓存，如果失败则从 IndexedDB 加载
+    try {
+      const testResp = await fetch(el.src, { method: 'HEAD' });
+      if (testResp.ok) return; // 服务器有缓存，不需要从 IndexedDB 加载
+    } catch (e) {}
+    // 服务器缓存过期，从 IndexedDB 加载
+    const dataUrl = await ImageDB.getImage(key);
+    if (dataUrl) {
+      el.src = dataUrl;
+    } else {
+      el.alt = '图片已过期';
+      el.parentElement.innerHTML = '<div class="img-placeholder"><i class="ti ti-photo-off"></i><span>图片已过期</span></div>';
+    }
+  });
+}
+
+function onImgError(el) {
+  const key = el.dataset.imgKey;
+  if (key && ImageDB.db) {
+    ImageDB.getImage(key).then(dataUrl => {
+      if (dataUrl) el.src = dataUrl;
+    });
+  }
 }
 
 async function selectImage(el, url) {
   if (!url) return;
-  const res = await fetch('/api/select_image', {
-    method: 'POST', headers: {'Content-Type':'application/json'},
+  const res = await apiFetch('/api/select_image', {
+    method: 'POST',
     body: JSON.stringify({image_url: url})
   });
   if (!res.ok) {
@@ -2338,8 +2427,13 @@ async function selectImage(el, url) {
 async function uploadRef(input) {
   if (!input.files[0]) return;
   const fd = new FormData(); fd.append('file', input.files[0]);
-  const res = await fetch('/api/upload_reference', {method:'POST', body: fd});
+  const res = await apiFetch('/api/upload_reference', {method:'POST', body: fd});
   if (!res.ok) { toast('上传失败'); return; }
+  // 存入 IndexedDB
+  const data = await res.json().catch(() => ({}));
+  if (data.key && data.data_url) {
+    await ImageDB.saveImage(data.key, data.data_url);
+  }
   toast('参考图已添加');
   await refreshState();
   input.value = '';
@@ -2674,9 +2768,8 @@ async function autoApplyStyle() {
   styleApplyTimer = setTimeout(async () => {
     if (!styleCandidatePool.length) return;
     const selected = Array.from(styleSelectedSet);
-    await fetch('/api/style/select', {
+    await apiFetch('/api/style/select', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
         candidate_keywords: styleCandidatePool,
         selected_keywords: selected
@@ -2689,7 +2782,7 @@ async function autoApplyStyle() {
 async function loadSession(path, silent = false) {
   const fd = new FormData();
   fd.append('path', path);
-  const res = await fetch('/api/project/load', {method:'POST', body: fd});
+  const res = await apiFetch('/api/project/load', {method:'POST', body: fd});
   if (!res.ok) { 
     if (!silent) toast('加载失败'); 
     throw new Error('加载失败');
@@ -2771,9 +2864,8 @@ async function saveSettings() {
   
   // 发送到后端覆盖
   try {
-    await fetch('/api/set_api_keys', {
+    await apiFetch('/api/set_api_keys', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(keys)
     });
   } catch (e) {}

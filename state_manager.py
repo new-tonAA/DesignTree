@@ -1,5 +1,5 @@
 """
-state_manager.py — 设计状态树核心管理器
+state_manager.py — 设计状态树核心管理器（多用户版）
 
 数据结构（无数据库，纯JSON）：
 {
@@ -13,20 +13,21 @@ state_manager.py — 设计状态树核心管理器
       "children":    [子节点ID, ...],
       "user_input":  用户的原始输入文字,
       "prompt":      经Agent优化后的完整prompt（仅本节点新增部分）,
-      "images":      [{url, local_path, timestamp}, ...],
+      "images":      [{key, url, revised_prompt}, ...],   ← url 为 /api/image/{key}
       "selected":    被选中的图片url / null,
       "created_at":  时间戳,
     },
     ...
   },
-  "style_weights":    { "关键词": float },  # 自动学习的风格偏好
+  "style_weights":    { "关键词": float },
   "reference_images": [{ "path": ..., "label": ... }],
   "save_path":        会话文件路径
 }
+
+会话按 user_id 隔离存储在 sessions/{user_id}/ 目录下。
 """
 
 import json
-import uuid
 import os
 import re
 import sys
@@ -38,15 +39,20 @@ from typing import Optional
 def get_app_dir() -> Path:
     """获取应用程序所在目录（兼容开发环境和打包后）"""
     if getattr(sys, 'frozen', False):
-        # PyInstaller打包后
         return Path(sys.executable).parent
     else:
-        # 开发环境
         return Path(__file__).parent
 
 
-SESSIONS_DIR = get_app_dir() / "sessions"
-SESSIONS_DIR.mkdir(exist_ok=True)
+SESSIONS_ROOT = get_app_dir() / "sessions"
+SESSIONS_ROOT.mkdir(exist_ok=True)
+
+
+def _user_sessions_dir(user_id: str) -> Path:
+    """获取用户专属的 sessions 目录"""
+    d = SESSIONS_ROOT / user_id
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
 # ─────────────────────────────────────────────
@@ -59,13 +65,13 @@ def _new_node(node_id: str, parent_id: Optional[str], user_input: str) -> dict:
         "parent":     parent_id,
         "children":   [],
         "user_input": user_input,
-        "prompt":     "",          # 由Agent填写
+        "prompt":     "",
         "images":     [],
         "attachments": [],
         "selected_list": [],
         "selected":   None,
         "created_at": datetime.now().isoformat(),
-        "generating": True,  # 标记正在生成
+        "generating": True,
     }
 
 
@@ -73,10 +79,11 @@ def _new_node(node_id: str, parent_id: Optional[str], user_input: str) -> dict:
 # 会话
 # ─────────────────────────────────────────────
 
-def new_session(project_name: str) -> dict:
+def new_session(project_name: str, user_id: str = "default") -> dict:
     """创建全新会话，返回session dict。"""
     root_node = _new_node("root", None, project_name)
-    root_node["generating"] = False  # 根节点不需要生成图片
+    root_node["generating"] = False
+    sessions_dir = _user_sessions_dir(user_id)
     session = {
         "project":        project_name,
         "created":        datetime.now().isoformat(),
@@ -84,14 +91,14 @@ def new_session(project_name: str) -> dict:
         "nodes":          {"root": root_node},
         "style_weights":  {},
         "reference_images": [],
-        "save_path":      str(SESSIONS_DIR / f"{_slugify(project_name)}_{_ts()}.json"),
+        "save_path":      str(sessions_dir / f"{_slugify(project_name)}_{_ts()}.json"),
     }
     _migrate_session_schema(session)
     _save(session)
     return session
 
 
-def load_session(path: str) -> dict:
+def load_session(path: str, user_id: str = "default") -> dict:
     """从JSON文件加载会话。"""
     with open(path, "r", encoding="utf-8") as f:
         s = json.load(f)
@@ -99,13 +106,14 @@ def load_session(path: str) -> dict:
     return s
 
 
-def list_sessions() -> list[dict]:
-    """列出所有已保存的会话（按时间倒序）。"""
-    files = sorted(SESSIONS_DIR.glob("*.json"), key=os.path.getmtime, reverse=True)
+def list_sessions(user_id: str = "default") -> list[dict]:
+    """列出用户的所有已保存会话（按时间倒序）。"""
+    sessions_dir = _user_sessions_dir(user_id)
+    files = sorted(sessions_dir.glob("*.json"), key=os.path.getmtime, reverse=True)
     result = []
     for f in files:
         try:
-            s = load_session(str(f))
+            s = load_session(str(f), user_id)
             result.append({
                 "path":    str(f),
                 "project": s["project"],
@@ -122,14 +130,10 @@ def list_sessions() -> list[dict]:
 # ─────────────────────────────────────────────
 
 def add_node(session: dict, user_input: str, parent_id: Optional[str] = None) -> dict:
-    """
-    在parent_id下新建子节点，成为当前节点。
-    如果parent_id为None，默认接在current_node后面。
-    """
     parent_id = parent_id or session["current_node"]
     if parent_id not in session["nodes"]:
         raise ValueError(f"节点 {parent_id} 不存在")
-    node_id   = f"v{len(session['nodes'])}"   # 简单递增ID
+    node_id = f"v{len(session['nodes'])}"
 
     node = _new_node(node_id, parent_id, user_input)
     session["nodes"][node_id] = node
@@ -140,17 +144,16 @@ def add_node(session: dict, user_input: str, parent_id: Optional[str] = None) ->
 
 
 def select_image(session: dict, image_url: str) -> None:
-    """在当前节点切换选中状态（多选）：已选再点取消，未选则加入。"""
+    """在当前节点切换选中状态（多选）"""
     node = _current(session)
     _ensure_node_selection(node)
-    
-    # 空字符串表示清空所有选中
+
     if not image_url:
         node["selected_list"] = []
         node["selected"] = None
         _save(session)
         return
-    
+
     valid_urls = {img.get("url") for img in node["images"] if isinstance(img, dict)}
     if image_url not in valid_urls:
         raise ValueError("只能选择当前节点下的图片")
@@ -168,23 +171,20 @@ def select_image(session: dict, image_url: str) -> None:
 
 
 def set_node_prompt(session: dict, node_id: str, prompt: str) -> None:
-    """Agent写回优化后的prompt。"""
     session["nodes"][node_id]["prompt"] = prompt
     _save(session)
 
 
 def add_images(session: dict, node_id: str, images: list[dict]) -> None:
-    """将生成的图片列表写入节点。images = [{url, local_path}]"""
     ok_images = [
         img for img in images
-        if isinstance(img, dict) and img.get("url")
+        if isinstance(img, dict) and (img.get("url") or img.get("key"))
     ]
     session["nodes"][node_id]["images"].extend(ok_images)
     _save(session)
 
 
 def add_attachments(session: dict, node_id: str, attachments: list[dict]) -> None:
-    """保存节点附带图片（用户上传）."""
     ok_attachments = [
         img for img in attachments
         if isinstance(img, dict) and img.get("url")
@@ -199,7 +199,6 @@ def add_attachments(session: dict, node_id: str, attachments: list[dict]) -> Non
 
 
 def switch_node(session: dict, node_id: str) -> None:
-    """切换当前活跃节点（用于回退/切换分支）。"""
     if node_id not in session["nodes"]:
         raise ValueError(f"节点 {node_id} 不存在")
     session["current_node"] = node_id
@@ -207,19 +206,15 @@ def switch_node(session: dict, node_id: str) -> None:
 
 
 def remove_node(session: dict, node_id: str) -> None:
-    """删除节点（用于生成失败时清理）。"""
     if node_id not in session["nodes"]:
         return
     node = session["nodes"][node_id]
-    # 从父节点的children中移除
     parent_id = node.get("parent")
     if parent_id and parent_id in session["nodes"]:
         parent = session["nodes"][parent_id]
         if node_id in parent.get("children", []):
             parent["children"].remove(node_id)
-    # 删除节点
     session["nodes"].pop(node_id, None)
-    # 如果删除的是当前节点，切换到父节点
     if session["current_node"] == node_id:
         session["current_node"] = parent_id or "root"
     _save(session)
@@ -235,10 +230,6 @@ def add_reference_image(session: dict, path: str, label: str = "") -> None:
 # ─────────────────────────────────────────────
 
 def get_path_to_root(session: dict, node_id: Optional[str] = None) -> list[dict]:
-    """
-    从node_id向上遍历到root，返回有序节点列表（root在前）。
-    这条路径上的所有user_input和prompt就是生成图片的完整上下文。
-    """
     node_id = node_id or session["current_node"]
     if node_id not in session["nodes"]:
         raise ValueError(f"节点 {node_id} 不存在")
@@ -247,20 +238,15 @@ def get_path_to_root(session: dict, node_id: Optional[str] = None) -> list[dict]
         node = session["nodes"][node_id]
         path.append(node)
         node_id = node["parent"]
-    return list(reversed(path))  # root → ... → current
+    return list(reversed(path))
 
 
 def build_context_for_agent(session: dict, new_user_input: str, node_id: Optional[str] = None) -> dict:
-    """
-    为Agent准备完整上下文，供其生成优化后的图像prompt。
-    返回dict，直接作为LLM的system+user消息素材。
-    注意：只包含从当前节点到root的路径上的内容，不混入其他分支。
-    """
     path = get_path_to_root(session, node_id)
 
     history_steps = []
     selected_images = []
-    path_attachments = []  # 路径上所有节点的附带图片
+    path_attachments = []
 
     for node in path:
         _ensure_node_selection(node)
@@ -270,7 +256,7 @@ def build_context_for_agent(session: dict, new_user_input: str, node_id: Optiona
             "prompt_used": node["prompt"],
             "selected":    bool(selected_imgs),
             "selected_urls": [img.get("url") for img in selected_imgs if img.get("url")],
-            "selected_image": selected_imgs[0] if selected_imgs else None,  # legacy
+            "selected_image": selected_imgs[0] if selected_imgs else None,
             "selected_images": selected_imgs,
         }
         history_steps.append(step)
@@ -282,7 +268,6 @@ def build_context_for_agent(session: dict, new_user_input: str, node_id: Optiona
                 "local_path": selected_img.get("local_path"),
                 "revised_prompt": selected_img.get("revised_prompt"),
             })
-        # 收集路径上节点的附带图片
         node_attachments = node.get("attachments", [])
         if isinstance(node_attachments, list):
             for att in node_attachments:
@@ -293,25 +278,21 @@ def build_context_for_agent(session: dict, new_user_input: str, node_id: Optiona
                         "name": att.get("name", ""),
                     })
 
-    # 传给模型的风格偏好严格限定为 root→current 路径，不混入其他分支
     path_style_weights = _build_path_style_weights(path)
 
     return {
         "path_node_ids": [n.get("id") for n in path if isinstance(n, dict)],
-        "history":         history_steps,        # root→current的完整历史
-        "new_user_input":  new_user_input,        # 用户本次输入
+        "history":         history_steps,
+        "new_user_input":  new_user_input,
         "style_weights":   path_style_weights,
         "reference_images": [r["path"] for r in session["reference_images"]],
         "selected_images": selected_images,
-        "path_attachments": path_attachments,  # 路径上的附带图片
+        "path_attachments": path_attachments,
         "project_name":    session["project"],
     }
 
 
 def get_tree_for_ui(session: dict) -> dict:
-    """
-    返回适合前端渲染的树结构（嵌套形式）。
-    """
     def _build(node_id):
         node = session["nodes"][node_id]
         _ensure_node_selection(node)
@@ -333,7 +314,6 @@ def get_tree_for_ui(session: dict) -> dict:
 # 风格权重（自动学习）
 # ─────────────────────────────────────────────
 
-# 建筑相关的风格关键词列表，用于从prompt中提取
 STYLE_KEYWORDS = [
     "现代", "简约", "古典", "新古典", "巴洛克", "工业风", "未来主义",
     "玻璃幕墙", "混凝土", "木材", "钢结构", "砖石",
@@ -395,13 +375,6 @@ EPS = 0.03
 
 
 def _update_style_weights(session: dict, node: dict, selected_url: str) -> None:
-    """
-    自动风格学习（改进版）：
-    1) 选中图相关描述做正向学习；
-    2) 用户输入中的“不要/避免”做负向学习；
-    3) 对未选中的候选图做轻微对比降权；
-    4) 所有权重做轻微衰减，避免早期偏好长期锁死。
-    """
     weights = session.get("style_weights", {})
     _decay_style_weights(weights)
 
@@ -419,14 +392,12 @@ def _update_style_weights(session: dict, node: dict, selected_url: str) -> None:
     selected_text = " ".join(x for x in selected_text_parts if x)
     selected_scores = _extract_style_scores(selected_text)
 
-    # 选中图正向强化；若描述里本身带否定，也会得到负向强化
     for kw, score in selected_scores.items():
         if score > 0:
             _bump_style_weight(weights, kw, 0.24 * min(score, 3))
         elif score < 0:
             _bump_style_weight(weights, kw, -0.24 * min(abs(score), 3))
 
-    # 用户明确“不要/避免”的风格应强力降权，优先级高于一般正向
     user_scores = _extract_style_scores(node.get("user_input", ""))
     for kw, score in user_scores.items():
         if score < 0:
@@ -434,7 +405,6 @@ def _update_style_weights(session: dict, node: dict, selected_url: str) -> None:
         elif score > 0:
             _bump_style_weight(weights, kw, 0.12 * min(score, 2))
 
-    # 对比学习：未选中图中的独有风格，做轻微降权
     other_text = " ".join(
         img.get("revised_prompt", "")
         for img in node.get("images", [])
@@ -452,11 +422,6 @@ def _update_style_weights(session: dict, node: dict, selected_url: str) -> None:
 
 
 def apply_style_selection(session: dict, candidate_keywords: list[str], selected_keywords: list[str]) -> None:
-    """
-    用户手动风格选择：
-    - 勾选 = 要（正向加权）
-    - 未勾选 = 不要（负向加权）
-    """
     candidate = [kw for kw in candidate_keywords if kw in STYLE_KEYWORDS]
     if not candidate:
         return
@@ -476,7 +441,6 @@ def apply_style_selection(session: dict, candidate_keywords: list[str], selected
 
 
 def get_style_summary(session: dict, top_n: int = 6) -> list[dict]:
-    """按绝对权重返回风格偏好摘要（包含“要”和“不要”）。"""
     weights = _get_current_path_style_weights(session)
     sorted_kw = sorted(weights.items(), key=lambda x: abs(x[1]), reverse=True)
     out = []
@@ -494,10 +458,6 @@ def get_style_summary(session: dict, top_n: int = 6) -> list[dict]:
 
 
 def get_style_candidates(session: dict, top_n: int = 14) -> list[dict]:
-    """
-    返回可供用户勾选的风格候选词：
-    综合当前路径文本命中 + 已学习权重。
-    """
     weights = _get_current_path_style_weights(session)
     path = get_path_to_root(session)
 
@@ -564,10 +524,6 @@ def _bump_style_weight(weights: dict, keyword: str, delta: float) -> None:
 
 
 def _extract_style_scores(text: str) -> dict[str, int]:
-    """
-    从文本提取风格词并判断正负倾向。
-    命中“不要/避免/without/avoid”等否定前缀时记为负分。
-    """
     norm = _normalize_text(text)
     if not norm:
         return {}
@@ -644,7 +600,6 @@ def _get_selected_images(node: dict) -> list[dict]:
     for img in node.get("images", []):
         if isinstance(img, dict) and img.get("url") in selected_urls:
             out.append(img)
-    # 按 selected_list 的顺序返回
     by_url = {img.get("url"): img for img in out if img.get("url")}
     ordered = [by_url[u] for u in node.get("selected_list", []) if u in by_url]
     return ordered
@@ -683,9 +638,6 @@ def _migrate_session_schema(session: dict) -> None:
 
 
 def _build_path_style_weights(path: list[dict]) -> dict:
-    """
-    仅基于 root→current 路径构建风格权重，避免其他分支污染当前提示词。
-    """
     weights: dict[str, float] = {}
     for node in path:
         _ensure_node_selection(node)
@@ -707,10 +659,16 @@ def _build_path_style_weights(path: list[dict]) -> dict:
 
 
 def _save(session: dict) -> None:
-    path = session["save_path"]
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(session, f, ensure_ascii=False, indent=2)
+    path = session.get("save_path")
+    if not path:
+        return
+    try:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(session, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        # 云部署时文件系统可能是只读的，静默忽略
+        print(f"[warn] Failed to save session to {path}: {e}")
 
 
 def _slugify(text: str) -> str:
