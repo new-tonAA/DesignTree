@@ -71,6 +71,10 @@ _user_last_session_path: dict[str, str] = {}  # user_id → last loaded path
 _image_cache: dict[str, str] = {}
 _image_cache_lock = threading.Lock()
 
+# 生成结果 data URL 缓存（node_id → [{key, url}]），前端拉取后存 IndexedDB
+_pending_gen_data_urls: dict[str, list] = {}
+_pending_gen_data_urls_lock = threading.Lock()
+
 
 def _get_user_id(request: Request) -> str:
     """从请求头提取 user_id，如不存在则使用默认值（兼容桌面模式）"""
@@ -268,6 +272,7 @@ def get_state(user_id: str = Depends(_get_user_id)):
         "current_attached_images": current_attachments_light,
         "current_attachments": current_attachments_light,
         "generating":    cur.get("generating", False),
+        "generating_error": cur.get("generating_error"),
     }
 
 
@@ -342,6 +347,7 @@ def generate(req: GenerateReq, user_id: str = Depends(_get_user_id)):
     except ValueError as e:
         raise HTTPException(400, str(e))
     node_id = node["id"]
+    s["nodes"][node_id]["generating"] = True
 
     # 保存用户上传的附带图片（data URL → 缓存 + key 引用）
     attachments = _save_prompt_attachments(req.prompt_images or [])
@@ -351,6 +357,7 @@ def generate(req: GenerateReq, user_id: str = Depends(_get_user_id)):
     try:
         context = sm.build_context_for_agent(s, req.user_input, base_node_id)
     except ValueError as e:
+        sm.remove_node(s, node_id)
         raise HTTPException(400, str(e))
 
     # 将新节点上传图加入上下文
@@ -367,78 +374,110 @@ def generate(req: GenerateReq, user_id: str = Depends(_get_user_id)):
     if req.model_memory:
         context["model_memory"] = req.model_memory
 
-    prompt_warning = None
-    if req.optimize_prompt:
+    optimize = req.optimize_prompt
+    model_memory = req.model_memory
+    n = req.n
+    prompt_images_data = req.prompt_images
+
+    # ── 后台线程执行生成（避免 Render 30s 网关超时）──
+    def _do_generate():
+        nonlocal prompt_warning
         try:
-            prompt = agent.prompt_agent(
-                context,
+            if optimize:
+                try:
+                    prompt = agent.prompt_agent(
+                        context,
+                        api_keys=api_keys,
+                        text_platform=pcfg.get("text_platform"),
+                        text_model=pcfg.get("text_model"),
+                    )
+                except Exception as e:
+                    prompt = agent.compose_prompt_from_context(context)
+                    prompt_warning = f"AI润色失败，已切换为路径记忆拼接：{e}"
+                    print(f"[warn] prompt_agent failed: {e}")
+            else:
+                prompt = agent.compose_prompt_from_context(context)
+
+            sm.set_node_prompt(s, node_id, prompt)
+
+            # 记录生成结果中的 data URL，供前端拉取后存 IndexedDB
+            generated_data_urls = []
+
+            def on_image_ready(img_dict):
+                if img_dict.get("key") and img_dict.get("url"):
+                    _cache_image(img_dict["key"], img_dict["url"])
+                    generated_data_urls.append({
+                        "key": img_dict["key"],
+                        "url": img_dict["url"],  # 完整 data URL
+                    })
+                    light_img = {
+                        "key": img_dict["key"],
+                        "url": f"/api/image/{img_dict['key']}",
+                        "revised_prompt": img_dict.get("revised_prompt", prompt),
+                    }
+                    sm.add_images(s, node_id, [light_img])
+
+            images = agent.generate_images(
+                prompt, n=n,
                 api_keys=api_keys,
-                text_platform=pcfg.get("text_platform"),
-                text_model=pcfg.get("text_model"),
+                platform_key=pcfg.get("platform"),
+                image_model=pcfg.get("image_model"),
+                on_image_ready=on_image_ready,
             )
+
+            ok_images = [
+                img for img in images
+                if isinstance(img, dict) and img.get("key")
+            ]
+            if not ok_images:
+                _cleanup_attachment_cache(attachments)
+                sm.remove_node(s, node_id)
+                first_error = next(
+                    (img.get("error") for img in images if isinstance(img, dict) and img.get("error")),
+                    "未生成任何可用图片"
+                )
+                # 存储错误信息供前端轮询时获取
+                s["nodes"].get(node_id, {})["generating_error"] = f"本次生成失败：{first_error}"
+                s["nodes"].get(node_id, {})["generating"] = False
+                sm._save(s)
+                return
+
+            # 存储生成的 data URL 供前端一次性拉取
+            if generated_data_urls:
+                _pending_gen_data_urls[node_id] = generated_data_urls
+
+            s["nodes"][node_id]["generating"] = False
+            sm._save(s)
+            print(f"[generate] node {node_id}: {len(ok_images)} images generated")
+
         except Exception as e:
-            prompt = agent.compose_prompt_from_context(context)
-            prompt_warning = f"AI润色失败，已切换为路径记忆拼接：{e}"
-            print(f"[warn] prompt_agent failed: {e}")
-    else:
-        prompt = agent.compose_prompt_from_context(context)
+            print(f"[generate] node {node_id} failed: {e}")
+            if node_id in s["nodes"]:
+                s["nodes"][node_id]["generating"] = False
+                s["nodes"][node_id]["generating_error"] = str(e)
+                sm._save(s)
+            _cleanup_attachment_cache(attachments)
 
-    sm.set_node_prompt(s, node_id, prompt)
+    prompt_warning = None
+    thread = threading.Thread(target=_do_generate, daemon=True)
+    thread.start()
 
-    # 逐张生成图片
-    def on_image_ready(img_dict):
-        if img_dict.get("key") and img_dict.get("url"):
-            # 缓存图片到内存
-            _cache_image(img_dict["key"], img_dict["url"])
-            # 存入 session（存 key + 缓存URL，不存完整 data URL）
-            light_img = {
-                "key": img_dict["key"],
-                "url": f"/api/image/{img_dict['key']}",
-                "revised_prompt": img_dict.get("revised_prompt", prompt),
-            }
-            sm.add_images(s, node_id, [light_img])
-
-    images = agent.generate_images(
-        prompt, n=req.n,
-        api_keys=api_keys,
-        platform_key=pcfg.get("platform"),
-        image_model=pcfg.get("image_model"),
-        on_image_ready=on_image_ready,
-    )
-
-    ok_images = [
-        img for img in images
-        if isinstance(img, dict) and img.get("key")
-    ]
-    if not ok_images:
-        _cleanup_attachment_cache(attachments)
-        sm.remove_node(s, node_id)
-        first_error = next(
-            (img.get("error") for img in images if isinstance(img, dict) and img.get("error")),
-            "未生成任何可用图片"
-        )
-        raise HTTPException(502, f"本次生成失败：{first_error}")
-
-    s["nodes"][node_id]["generating"] = False
-    sm._save(s)
-
-    # 返回完整 data URL 给前端（前端存入 IndexedDB）
+    # 立即返回，前端通过轮询获取状态
     return {
         "node_id": node_id,
-        "optimized_prompt": prompt,
-        "prompt_optimized": req.optimize_prompt,
-        "prompt_warning": prompt_warning,
-        "context_path_node_ids": context.get("path_node_ids", []),
-        "attachments": attachments,
-        "images": [
-            {
-                "key": img.get("key"),
-                "url": img.get("url"),  # 完整 data URL，前端存 IndexedDB
-                "revised_prompt": img.get("revised_prompt", prompt),
-            }
-            for img in ok_images
-        ],
+        "status": "generating",
     }
+
+
+@app.get("/api/gen_result/{node_id}")
+def get_gen_result(node_id: str, user_id: str = Depends(_get_user_id)):
+    """前端轮询获取生成结果中的 data URL（用于存入 IndexedDB）"""
+    _require_session(user_id)
+    with _pending_gen_data_urls_lock:
+        data_urls = _pending_gen_data_urls.pop(node_id, None)
+    if data_urls is None:
+        return {"ready": False}
+    return {"ready": True, "images": data_urls}
 
 
 # ── 选图 ─────────────────────────────────────
