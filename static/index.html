@@ -2352,15 +2352,34 @@ function showEmptyGrid() {
     </div>`;
 }
 
-function renderImages(images, selectedUrls = []) {
+async function renderImages(images, selectedUrls = []) {
   const grid = document.getElementById('imgGrid');
   if (!images || !images.length) {
     showEmptyGrid();
     return;
   }
-  const selectedSet = new Set(selectedUrls || []);
+  // 用 key 匹配选中状态（避免 URL 从 /api/image/ 变成 data: 后匹配失败）
+  const selectedKeys = new Set();
+  const selectedByUrl = new Map();
+  selectedUrls.forEach(u => {
+    selectedByUrl.set(u, true);
+    if (u.includes('/api/image/')) {
+      const k = u.split('/api/image/')[1]?.split('?')[0];
+      if (k) selectedKeys.add(k);
+    }
+  });
+
+  // 对服务器缓存 URL 的图片，先从 IndexedDB 预查
+  const resolvedImages = await Promise.all(images.map(async (img) => {
+    if (img.error || !img.url || !img.key) return img;
+    if (!img.url.includes('/api/image/')) return img;
+    const dataUrl = await ImageDB.getImage(img.key);
+    if (dataUrl) return { ...img, url: dataUrl };
+    return img;
+  }));
+
   grid.className = 'img-grid ' + currentGridClass;
-  grid.innerHTML = images.map((img, i) => {
+  grid.innerHTML = resolvedImages.map((img, i) => {
     if (img.error || !img.url) return `
       <div class="img-card">
         <div class="img-placeholder">
@@ -2368,51 +2387,52 @@ function renderImages(images, selectedUrls = []) {
           <span class="gen-error">${img.error || '生成失败'}</span>
         </div>
       </div>`;
-    const isSel = selectedSet.has(img.url);
+    const isSel = selectedByUrl.has(img.url) || (img.key && selectedKeys.has(img.key));
     const safeUrl = img.url.replace(/'/g, "\\'");
+    const imgKey = img.key || '';
     return `
       <div class="img-card ${isSel ? 'sel' : ''}" onclick="selectImage(this,'${safeUrl}')">
-        <img src="${img.url}" alt="图${i+1}" loading="lazy" data-img-key="${img.key || ''}" onerror="onImgError(this)">
+        <img src="${img.url}" alt="图${i+1}" loading="lazy" data-img-key="${imgKey}" onerror="onImgError(this)">
         <button class="img-zoom-btn" onclick="event.stopPropagation();showImageViewer('${safeUrl}', ${isSel ? 'true' : 'false'}, true)" title="大图查看">
           🔍
         </button>
       </div>`;
   }).join('');
-
-  // 后台从 IndexedDB 补充加载图片（如果服务器缓存过期）
-  grid.querySelectorAll('img[data-img-key]').forEach(async (el) => {
-    const key = el.dataset.imgKey;
-    if (!key || !el.src.includes('/api/image/')) return;
-    // 先尝试服务器缓存，如果失败则从 IndexedDB 加载
-    try {
-      const testResp = await fetch(el.src, { method: 'HEAD' });
-      if (testResp.ok) return; // 服务器有缓存，不需要从 IndexedDB 加载
-    } catch (e) {}
-    // 服务器缓存过期，从 IndexedDB 加载
-    const dataUrl = await ImageDB.getImage(key);
-    if (dataUrl) {
-      el.src = dataUrl;
-    } else {
-      el.alt = '图片已过期';
-      el.parentElement.innerHTML = '<div class="img-placeholder"><i class="ti ti-photo-off"></i><span>图片已过期</span></div>';
-    }
-  });
 }
 
 function onImgError(el) {
+  // 图片加载失败时，尝试从 IndexedDB 恢复
   const key = el.dataset.imgKey;
   if (key && ImageDB.db) {
     ImageDB.getImage(key).then(dataUrl => {
-      if (dataUrl) el.src = dataUrl;
+      if (dataUrl) {
+        el.src = dataUrl;
+      } else {
+        showImgExpired(el);
+      }
     });
+  } else {
+    showImgExpired(el);
   }
+}
+
+function showImgExpired(el) {
+  el.alt = '图片已过期';
+  el.parentElement.innerHTML = '<div class="img-placeholder"><i class="ti ti-photo-off"></i><span>图片已过期</span></div>';
 }
 
 async function selectImage(el, url) {
   if (!url) return;
+  // 后端存储的是 /api/image/{key} 格式，data URL 需要转换
+  let backendUrl = url;
+  const imgEl = el.querySelector('img') || el;
+  const key = imgEl.dataset?.imgKey;
+  if (key && url.startsWith('data:')) {
+    backendUrl = '/api/image/' + key;
+  }
   const res = await apiFetch('/api/select_image', {
     method: 'POST',
-    body: JSON.stringify({image_url: url})
+    body: JSON.stringify({image_url: backendUrl})
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
