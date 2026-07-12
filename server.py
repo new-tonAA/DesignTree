@@ -22,7 +22,7 @@ import base64
 import threading
 from pathlib import Path
 from collections import defaultdict
-from typing import Optional
+from typing import Optional, Dict, List
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request, Depends
@@ -35,6 +35,11 @@ import state_manager as sm
 import agent
 
 app = FastAPI(title="ArchAI Design Studio")
+
+# ── 启动事件：加载 config.json ──────────────────
+@app.on_event("startup")
+def _on_startup():
+    _load_config()
 
 # ── CORS ──────────────────────────────────────
 app.add_middleware(
@@ -58,21 +63,90 @@ STATIC_DIR = APP_DIR / "static"
 STATIC_DIR.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+# ── 配置持久化 ──────────────────────────────────
+_CONFIG_PATH = APP_DIR / "config.json"
+
+
+def _load_config() -> None:
+    """从 config.json 加载默认配置（用于桌面 exe 模式）"""
+    if not _CONFIG_PATH.exists():
+        # 首次运行，创建默认 config.json
+        _create_default_config()
+        print("[server] Created default config.json")
+    try:
+        with open(_CONFIG_PATH, 'r', encoding='utf-8') as f:
+            cfg = json.load(f)
+        # 加载 API Keys 到 default 用户
+        api_keys = cfg.get("api_keys", {})
+        default_keys = {}
+        for platform in ("openai", "openrouter", "v3", "deepseek", "volcengine"):
+            key = api_keys.get(platform, "")
+            if key:
+                default_keys[platform] = key
+        if default_keys:
+            _user_api_keys["default"] = default_keys
+            print(f"[server] Loaded API keys from config.json: {list(default_keys.keys())}")
+        # 加载平台配置到 default 用户
+        platform_cfg = cfg.get("platform_config", {})
+        if platform_cfg:
+            _user_platform_config["default"] = platform_cfg
+            print(f"[server] Loaded platform config from config.json")
+    except Exception as e:
+        print(f"[server] Failed to load config.json: {e}")
+
+
+def _create_default_config() -> None:
+    """创建默认的 config.json"""
+    default_cfg = {
+        "api_keys": {
+            "openai": "",
+            "openrouter": "",
+            "v3": "",
+            "deepseek": "",
+            "volcengine": ""
+        },
+        "platform_config": {
+            "platform": "v3",
+            "image_model": "gpt-image-1",
+            "text_platform": "v3",
+            "text_model": "gpt-4o-mini"
+        }
+    }
+    try:
+        with open(_CONFIG_PATH, 'w', encoding='utf-8') as f:
+            json.dump(default_cfg, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print(f"[server] Failed to create default config.json: {e}")
+
+
+def _save_config() -> None:
+    """保存 default 用户配置到 config.json（只存用户自填的 keys，不含硬编码默认值）"""
+    cfg = {
+        "api_keys": _user_api_keys.get("default", {}),  # 只有用户自填的 key
+        "platform_config": _get_user_platform_config("default"),
+    }
+    try:
+        with open(_CONFIG_PATH, 'w', encoding='utf-8') as f:
+            json.dump(cfg, f, indent=2, ensure_ascii=False)
+        print("[server] Config saved to config.json")
+    except Exception as e:
+        print(f"[server] Failed to save config.json: {e}")
+
 
 # ── 多用户状态隔离 ─────────────────────────────
 
 # per-user 数据结构
-_user_sessions: dict[str, dict] = {}          # user_id → session dict
-_user_api_keys: dict[str, dict] = {}          # user_id → {platform: api_key}
-_user_platform_config: dict[str, dict] = {}   # user_id → {platform, image_model, text_platform, text_model}
-_user_last_session_path: dict[str, str] = {}  # user_id → last loaded path
+_user_sessions: Dict[str, dict] = {}          # user_id → session dict
+_user_api_keys: Dict[str, dict] = {}          # user_id → {platform: api_key}
+_user_platform_config: Dict[str, dict] = {}   # user_id → {platform, image_model, text_platform, text_model}
+_user_last_session_path: Dict[str, str] = {}  # user_id → last loaded path
 
 # 图片内存缓存（key → data URL），所有用户共享 key 空间（key 含时间戳，不会冲突）
-_image_cache: dict[str, str] = {}
+_image_cache: Dict[str, str] = {}
 _image_cache_lock = threading.Lock()
 
 # 生成结果 data URL 缓存（node_id → [{key, url}]），前端拉取后存 IndexedDB
-_pending_gen_data_urls: dict[str, list] = {}
+_pending_gen_data_urls: Dict[str, list] = {}
 _pending_gen_data_urls_lock = threading.Lock()
 
 
@@ -84,7 +158,18 @@ def _get_user_id(request: Request) -> str:
     return uid
 
 
-# 从环境变量读取默认 API Keys（部署到 Render 等云平台时使用）
+# ── 内置默认 API Keys（硬编码，不暴露给用户）─────────
+# exe 桌面模式：用户无需自己填 Key 即可使用
+# 云部署模式：通过环境变量覆盖（优先级更高）
+_HARDCODED_KEYS = {
+    "v3": "sk-SF0dlwGARIDmEzQyE790Df1358534698991516Ef36050dD3",
+    "openai": "",
+    "openrouter": "",
+    "deepseek": "",
+    "volcengine": "",
+}
+
+# 从环境变量读取默认 API Keys（云部署时覆盖硬编码值）
 _ENV_DEFAULT_KEYS = {}
 for _ek, _ev in [
     ("V3_API_KEY", "v3"),
@@ -96,15 +181,13 @@ for _ek, _ev in [
     _val = os.environ.get(_ek, "").strip()
     if _val:
         _ENV_DEFAULT_KEYS[_ev] = _val
-if _ENV_DEFAULT_KEYS:
-    print(f"[server] Loaded default API keys from env: {list(_ENV_DEFAULT_KEYS.keys())}")
 
 
 def _get_user_api_keys(user_id: str) -> dict:
-    """获取用户的 API Keys，优先用户设置的，回退到环境变量默认值"""
-    user_keys = _user_api_keys.get(user_id, {})
-    merged = dict(_ENV_DEFAULT_KEYS)  # 以环境变量为基础
-    merged.update(user_keys)  # 用户设置覆盖环境变量
+    """获取用户的 API Keys，合并优先级：硬编码 < 环境变量 < 用户自填"""
+    merged = dict(_HARDCODED_KEYS)   # 硬编码为基础
+    merged.update(_ENV_DEFAULT_KEYS) # 环境变量覆盖硬编码
+    merged.update(_user_api_keys.get(user_id, {}))  # 用户自填覆盖一切
     return merged
 
 
@@ -300,7 +383,7 @@ class GenerateReq(BaseModel):
     parent_node_id: Optional[str] = None
     optimize_prompt: bool = True
     model_memory: Optional[str] = None
-    prompt_images: Optional[list[dict]] = None
+    prompt_images: Optional[List[dict]] = None
 
 class PolishReq(BaseModel):
     user_input: str
@@ -496,8 +579,8 @@ def select_image(req: SelectImageReq, user_id: str = Depends(_get_user_id)):
 
 
 class StyleSelectReq(BaseModel):
-    candidate_keywords: list[str]
-    selected_keywords: list[str]
+    candidate_keywords: List[str]
+    selected_keywords: List[str]
 
 @app.post("/api/style/select")
 def style_select(req: StyleSelectReq, user_id: str = Depends(_get_user_id)):
@@ -593,7 +676,21 @@ def set_api_keys(req: SetApiKeysReq, user_id: str = Depends(_get_user_id)):
         keys["deepseek"] = agent._sanitize_api_key(req.deepseek)
     if req.volcengine:
         keys["volcengine"] = agent._sanitize_api_key(req.volcengine)
+    # 允许清空 key（传入空字符串）
+    if req.openai == "":
+        keys.pop("openai", None)
+    if req.openrouter == "":
+        keys.pop("openrouter", None)
+    if req.v3 == "":
+        keys.pop("v3", None)
+    if req.deepseek == "":
+        keys.pop("deepseek", None)
+    if req.volcengine == "":
+        keys.pop("volcengine", None)
     _user_api_keys[user_id] = keys
+    # 桌面模式（default 用户）自动持久化到 config.json
+    if user_id == "default":
+        _save_config()
     return {"ok": True}
 
 
@@ -633,6 +730,9 @@ def set_platform(req: SetPlatformReq, user_id: str = Depends(_get_user_id)):
                 raise ValueError(f"平台 {cfg['text_platform']} 不支持文本模型: {req.text_model}")
             cfg["text_model"] = req.text_model
         _user_platform_config[user_id] = cfg
+        # 桌面模式（default 用户）自动持久化到 config.json
+        if user_id == "default":
+            _save_config()
         return {"ok": True, "config": cfg}
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -641,6 +741,25 @@ def set_platform(req: SetPlatformReq, user_id: str = Depends(_get_user_id)):
 def get_current_platform(user_id: str = Depends(_get_user_id)):
     cfg = _get_user_platform_config(user_id)
     return cfg
+
+
+@app.get("/api/get_api_keys")
+def get_api_keys(user_id: str = Depends(_get_user_id)):
+    """获取用户自填的 API Keys（脱敏显示，不含内置默认 Key）"""
+    # 只返回用户自己填写的 keys，不暴露硬编码/环境变量的默认值
+    keys = _user_api_keys.get(user_id, {})
+    masked = {}
+    for platform, key in keys.items():
+        if key and len(key) > 12:
+            masked[platform] = key[:4] + "..." + key[-4:]
+        elif key:
+            masked[platform] = key[:2] + "..."
+        else:
+            masked[platform] = ""
+    # 同时告诉前端哪些平台有内置默认 Key（用户无需自填）
+    has_default = {p: bool(v) for p, v in _HARDCODED_KEYS.items()}
+    env_defaults = {p: bool(v) for p, v in _ENV_DEFAULT_KEYS.items()}
+    return {"masked": masked, "has_default": has_default, "env_default": env_defaults}
 
 
 # ── 会话备份/恢复 ────────────────────────────
@@ -707,9 +826,9 @@ def _history_for_ui(s: dict) -> list:
     return out
 
 
-def _save_prompt_attachments(prompt_images: list[dict]) -> list[dict]:
+def _save_prompt_attachments(prompt_images: List[dict]) -> List[dict]:
     """将前端发来的 data URL 图片转为缓存引用"""
-    out: list[dict] = []
+    out: List[dict] = []
 
     for i, item in enumerate(prompt_images or []):
         if not isinstance(item, dict):
@@ -742,7 +861,7 @@ def _save_prompt_attachments(prompt_images: list[dict]) -> list[dict]:
     return out
 
 
-def _cleanup_attachment_cache(attachments: list[dict]) -> None:
+def _cleanup_attachment_cache(attachments: List[dict]) -> None:
     """清理附图缓存"""
     for item in attachments or []:
         if not isinstance(item, dict):
@@ -767,6 +886,9 @@ def _path_tags(s: dict) -> list:
 if __name__ == "__main__":
     import webbrowser
     import socket
+
+    # 启动前加载 config.json
+    _load_config()
 
     def find_available_port(start_port=8000, max_attempts=10):
         for port in range(start_port, start_port + max_attempts):

@@ -751,14 +751,14 @@ textarea#userInput::placeholder { color: var(--dim); }
         <div class="n-btns">
           <span class="n-lbl">张数</span>
           <button class="nb" onclick="setN(this,1,'g1')">1</button>
-          <button class="nb" onclick="setN(this,2,'g2')">2</button>
-          <button class="nb on" onclick="setN(this,4,'g4')">4</button>
+          <button class="nb on" onclick="setN(this,2,'g2')">2</button>
+          <button class="nb" onclick="setN(this,4,'g4')">4</button>
           <button class="nb" id="customNBtn" onclick="showCustomN()">更多</button>
         </div>
       </div>
 
       <div class="img-area">
-        <div class="img-grid g4" id="imgGrid">
+        <div class="img-grid g2" id="imgGrid">
           <div style="grid-column:1/-1;text-align:center;padding:60px 0;color:var(--dim);font-size:13px">
             输入你的设计需求，点击「生成」开始
           </div>
@@ -975,6 +975,7 @@ textarea#userInput::placeholder { color: var(--dim); }
     <!-- API Key -->
     <div style="margin-bottom:20px">
       <div style="font-size:12px;font-weight:500;color:var(--muted);margin-bottom:10px">API Key（留空使用默认）</div>
+      <div style="font-size:11px;color:var(--dim);margin-bottom:8px;padding:6px 8px;background:var(--bg3);border-radius:4px;border:1px solid var(--line2)">⚠ 请合理分配额度，勿随意浪费</div>
       <div style="display:flex;flex-direction:column;gap:8px">
         <div>
           <div style="font-size:11px;color:var(--dim);margin-bottom:4px">OpenAI</div>
@@ -1035,6 +1036,7 @@ textarea#userInput::placeholder { color: var(--dim); }
 
     <div style="display:flex;gap:10px;margin-top:20px">
       <button style="flex:1;padding:10px 0;background:var(--bg4);border:1px solid var(--line2);border-radius:6px;color:var(--muted);font-size:12px;cursor:pointer" onclick="hideSettingsModal()">取消</button>
+      <button style="flex:1;padding:10px 0;background:#553333;border:1px solid #775555;border-radius:6px;color:#ffaaaa;font-size:12px;cursor:pointer" onclick="clearUserKeys()">清空自填 Key</button>
       <button style="flex:1;padding:10px 0;background:var(--accent);border:none;border-radius:6px;color:var(--bg);font-size:12px;font-weight:500;cursor:pointer" onclick="saveSettings()">保存</button>
     </div>
   </div>
@@ -1119,8 +1121,8 @@ async function apiFetch(url, options = {}) {
 }
 
 // ── State ────────────────────────────────────
-let currentN = 4;
-let currentGridClass = 'g4';
+let currentN = 2;
+let currentGridClass = 'g2';
 let selectedImageUrls = new Set();
 let currentNodeImageUrlSet = new Set();
 let currentPathNodeIdSet = new Set();
@@ -1287,23 +1289,7 @@ async function init() {
     updatePlatformLabel();
   }
 
-  // Auto-sync API keys from localStorage to backend
-  const savedKeys = localStorage.getItem('archai_api_keys');
-  if (savedKeys) {
-    try {
-      const keys = JSON.parse(savedKeys);
-      await apiFetch('/api/set_api_keys', {
-        method: 'POST',
-        body: JSON.stringify({
-          openai: normalizeApiKey(keys.openai || ''),
-          openrouter: normalizeApiKey(keys.openrouter || ''),
-          v3: normalizeApiKey(keys.v3 || ''),
-          deepseek: normalizeApiKey(keys.deepseek || ''),
-          volcengine: normalizeApiKey(keys.volcengine || ''),
-        })
-      });
-    } catch (e) {}
-  }
+  // 不再从 localStorage 同步 API keys 到后端（不在前端存储完整 key）
 
   if (!Number.isFinite(sideWidth)) sideWidth = 288;
   applySideWidth(sideWidth);
@@ -2836,13 +2822,36 @@ function showSettingsModal() {
     btn.style.borderColor = btn.dataset.theme === currentTheme ? 'var(--accent)' : 'var(--line2)';
   });
   
-  // 加载API keys
-  const keys = JSON.parse(localStorage.getItem('archai_api_keys') || '{}');
-  document.getElementById('keyOpenAI').value = keys.openai || '';
-  document.getElementById('keyOpenRouter').value = keys.openrouter || '';
-  document.getElementById('keyV3').value = keys.v3 || '';
-  document.getElementById('keyDeepSeek').value = keys.deepseek || '';
-  document.getElementById('keyVolcengine').value = keys.volcengine || '';
+  // 输入框始终留空，不暴露任何 Key 值
+  document.getElementById('keyOpenAI').value = '';
+  document.getElementById('keyOpenRouter').value = '';
+  document.getElementById('keyV3').value = '';
+  document.getElementById('keyDeepSeek').value = '';
+  document.getElementById('keyVolcengine').value = '';
+  
+  // 从后端获取状态信息，仅用 placeholder 提示
+  apiFetch('/api/get_api_keys').then(r => r.json()).then(data => {
+    const masked = data.masked || {};
+    const hasDefault = data.has_default || {};
+    const envDefault = data.env_default || {};
+    // 显示用户已保存的脱敏 Key 作为 placeholder
+    if (masked.openai) document.getElementById('keyOpenAI').placeholder = masked.openai + '（已保存，留空保留）';
+    if (masked.openrouter) document.getElementById('keyOpenRouter').placeholder = masked.openrouter + '（已保存，留空保留）';
+    if (masked.v3) document.getElementById('keyV3').placeholder = masked.v3 + '（已保存，留空保留）';
+    if (masked.deepseek) document.getElementById('keyDeepSeek').placeholder = masked.deepseek + '（已保存，留空保留）';
+    if (masked.volcengine) document.getElementById('keyVolcengine').placeholder = masked.volcengine + '（已保存，留空保留）';
+    // 标注有内置默认 Key 的平台（合并硬编码和环境变量）
+    const defaultPlatforms = {...hasDefault, ...envDefault};
+    const platformLabels = {v3: 'keyV3', openai: 'keyOpenAI', openrouter: 'keyOpenRouter', deepseek: 'keyDeepSeek', volcengine: 'keyVolcengine'};
+    for (const [p, label] of Object.entries(platformLabels)) {
+      if (defaultPlatforms[p]) {
+        const el = document.getElementById(label);
+        if (!masked[p]) {
+          el.placeholder = '有内置 Key，留空即可使用';
+        }
+      }
+    }
+  }).catch(() => {});
   
   document.getElementById('settingsModal').style.display = 'flex';
 }
@@ -2877,26 +2886,78 @@ function setTheme(theme) {
 }
 
 async function saveSettings() {
-  // 保存API keys到localStorage
-  const keys = {
-    openai: normalizeApiKey(document.getElementById('keyOpenAI').value),
-    openrouter: normalizeApiKey(document.getElementById('keyOpenRouter').value),
-    v3: normalizeApiKey(document.getElementById('keyV3').value),
-    deepseek: normalizeApiKey(document.getElementById('keyDeepSeek').value),
-    volcengine: normalizeApiKey(document.getElementById('keyVolcengine').value),
+  // 只发送用户新填的 key，空字段不发送（不覆盖已保存的 key）
+  const fields = {
+    openai: 'keyOpenAI',
+    openrouter: 'keyOpenRouter',
+    v3: 'keyV3',
+    deepseek: 'keyDeepSeek',
+    volcengine: 'keyVolcengine',
   };
-  localStorage.setItem('archai_api_keys', JSON.stringify(keys));
+  const payload = {};
+  for (const [platform, elId] of Object.entries(fields)) {
+    const val = normalizeApiKey(document.getElementById(elId).value);
+    if (val) {
+      payload[platform] = val;  // 用户新填的 key → 发送到后端
+    }
+    // 空字段不包含在 payload 中，后端收到 None 不会覆盖已保存的 key
+  }
   
-  // 发送到后端覆盖
+  // 不再存储完整 key 到 localStorage
+  localStorage.removeItem('archai_api_keys');
+  
+  // 发送到后端（只有用户新填的字段）
   try {
     await apiFetch('/api/set_api_keys', {
       method: 'POST',
-      body: JSON.stringify(keys)
+      body: JSON.stringify(payload)
     });
   } catch (e) {}
   
   hideSettingsModal();
   toast('设置已保存');
+}
+
+async function clearUserKeys() {
+  if (!confirm('确定清空所有自填的 API Key？（内置 Key 不受影响）')) return;
+  // 发送空字符串到后端，触发清除逻辑
+  try {
+    await apiFetch('/api/set_api_keys', {
+      method: 'POST',
+      body: JSON.stringify({
+        openai: "",
+        openrouter: "",
+        v3: "",
+        deepseek: "",
+        volcengine: "",
+      })
+    });
+  } catch (e) {}
+  // 清空输入框和 localStorage
+  localStorage.removeItem('archai_api_keys');
+  document.getElementById('keyOpenAI').value = '';
+  document.getElementById('keyOpenRouter').value = '';
+  document.getElementById('keyV3').value = '';
+  document.getElementById('keyDeepSeek').value = '';
+  document.getElementById('keyVolcengine').value = '';
+  document.getElementById('keyOpenAI').placeholder = '';
+  document.getElementById('keyOpenRouter').placeholder = '';
+  document.getElementById('keyV3').placeholder = '';
+  document.getElementById('keyDeepSeek').placeholder = '';
+  document.getElementById('keyVolcengine').placeholder = '';
+  // 重新加载 placeholder 提示
+  apiFetch('/api/get_api_keys').then(r => r.json()).then(data => {
+    const hasDefault = data.has_default || {};
+    const envDefault = data.env_default || {};
+    const defaultPlatforms = {...hasDefault, ...envDefault};
+    const platformLabels = {v3: 'keyV3', openai: 'keyOpenAI', openrouter: 'keyOpenRouter', deepseek: 'keyDeepSeek', volcengine: 'keyVolcengine'};
+    for (const [p, label] of Object.entries(platformLabels)) {
+      if (defaultPlatforms[p]) {
+        document.getElementById(label).placeholder = '有内置 Key，留空即可使用';
+      }
+    }
+  }).catch(() => {});
+  toast('自填 Key 已清空');
 }
 
 // 加载主题
